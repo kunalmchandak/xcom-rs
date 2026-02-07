@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Authentication status response
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,12 +52,66 @@ pub struct AuthToken {
 #[derive(Debug, Clone)]
 pub struct AuthStore {
     token: Option<AuthToken>,
+    storage_path: Option<PathBuf>,
 }
 
 impl AuthStore {
     /// Create a new empty auth store
     pub fn new() -> Self {
-        Self { token: None }
+        Self {
+            token: None,
+            storage_path: None,
+        }
+    }
+
+    /// Create an auth store with persistent storage at the given path
+    pub fn with_storage(path: PathBuf) -> Result<Self> {
+        let mut store = Self {
+            token: None,
+            storage_path: Some(path.clone()),
+        };
+
+        // Try to load existing token from storage
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(token) = serde_json::from_str::<AuthToken>(&content) {
+                    store.token = Some(token);
+                }
+            }
+        }
+
+        Ok(store)
+    }
+
+    /// Get default storage path: ~/.config/xcom-rs/auth.json
+    pub fn default_storage_path() -> Result<PathBuf> {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
+        let config_dir = PathBuf::from(home).join(".config").join("xcom-rs");
+        std::fs::create_dir_all(&config_dir)?;
+        Ok(config_dir.join("auth.json"))
+    }
+
+    /// Create an auth store with default storage location
+    pub fn with_default_storage() -> Result<Self> {
+        Self::with_storage(Self::default_storage_path()?)
+    }
+
+    /// Save the current token to persistent storage
+    fn save_to_storage(&self) -> Result<()> {
+        if let Some(path) = &self.storage_path {
+            if let Some(token) = &self.token {
+                let json = serde_json::to_string_pretty(token)?;
+                std::fs::write(path, json)?;
+            } else {
+                // If no token, delete the storage file
+                if path.exists() {
+                    std::fs::remove_file(path)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Get current authentication status
@@ -109,12 +164,14 @@ impl AuthStore {
             .map_err(|e| anyhow::anyhow!("Invalid auth data structure: {}", e))?;
 
         self.token = Some(token);
+        self.save_to_storage()?;
         Ok(())
     }
 
     /// Set a token (for testing)
     pub fn set_token(&mut self, token: AuthToken) {
         self.token = Some(token);
+        let _ = self.save_to_storage(); // Ignore errors in test helper
     }
 
     /// Check if authenticated

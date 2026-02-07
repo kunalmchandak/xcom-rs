@@ -91,8 +91,11 @@ fn main() {
         tracing::info!("Running in non-interactive mode");
     }
 
-    // Create auth store (in-memory for now; in real impl would persist to disk)
-    let mut auth_store = AuthStore::new();
+    // Create auth store with persistent storage
+    let mut auth_store = AuthStore::with_default_storage().unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "Failed to create persistent auth store, using in-memory store");
+        AuthStore::new()
+    });
 
     // Execute command
     // Note: ExecutionContext is available for commands that need to check interaction requirements
@@ -146,7 +149,7 @@ fn main() {
                     Envelope::<()>::error("error", error)
                 };
                 let _ = print_envelope(&envelope, output_format);
-                std::process::exit(ExitCode::OperationFailed.into());
+                std::process::exit(ExitCode::AuthenticationError.into());
             }
 
             // In interactive mode, would show prompt here
@@ -199,7 +202,15 @@ fn main() {
                             print_envelope(&envelope, output_format)
                         }
                         Err(e) => {
-                            let error = ErrorDetails::new(ErrorCode::AuthRequired, e.to_string());
+                            let error = ErrorDetails::auth_required(
+                                e.to_string(),
+                                vec![
+                                    "Authenticate first by running 'xcom-rs auth login'"
+                                        .to_string(),
+                                    "Or import existing credentials with 'xcom-rs auth import'"
+                                        .to_string(),
+                                ],
+                            );
                             let envelope = if let Some(meta) = create_meta() {
                                 Envelope::<()>::error_with_meta("error", error, meta)
                             } else {
@@ -240,7 +251,11 @@ fn main() {
         Commands::Billing { command } => {
             tracing::info!("Executing billing command");
             let estimator = CostEstimator::new();
-            let mut budget_tracker = BudgetTracker::new(ctx.budget_daily_credits);
+            let mut budget_tracker = BudgetTracker::with_default_storage(ctx.budget_daily_credits)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(error = %e, "Failed to create persistent budget tracker, using in-memory tracker");
+                    BudgetTracker::new(ctx.budget_daily_credits)
+                });
 
             match command {
                 BillingCommands::Estimate { operation, text } => {
@@ -285,12 +300,20 @@ fn main() {
 
                     let estimate = BillingEstimate {
                         operation: operation.clone(),
-                        cost,
+                        cost: cost.clone(),
                     };
 
                     let mut meta_map = create_meta().unwrap_or_default();
                     if ctx.dry_run {
                         meta_map.insert("dryRun".to_string(), serde_json::json!(true));
+                        // Add cost to meta for dry-run
+                        meta_map.insert(
+                            "cost".to_string(),
+                            serde_json::json!({
+                                "credits": 0,
+                                "usdEstimated": 0.0
+                            }),
+                        );
                     }
 
                     let envelope = if !meta_map.is_empty() {

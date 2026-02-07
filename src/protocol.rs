@@ -119,6 +119,13 @@ impl ErrorDetails {
         details.insert("nextSteps".to_string(), serde_json::json!(next_steps));
         Self::with_details(ErrorCode::InteractionRequired, message, details)
     }
+
+    /// Create an auth required error with next steps guidance
+    pub fn auth_required(message: impl Into<String>, next_steps: Vec<String>) -> Self {
+        let mut details = HashMap::new();
+        details.insert("nextSteps".to_string(), serde_json::json!(next_steps));
+        Self::with_details(ErrorCode::AuthRequired, message, details)
+    }
 }
 
 /// Error code vocabulary
@@ -139,6 +146,7 @@ pub enum ErrorCode {
     InvalidState,
     InteractionRequired,
     CostLimitExceeded,
+    DailyBudgetExceeded,
 }
 
 impl ErrorCode {
@@ -165,7 +173,8 @@ impl ErrorCode {
             | ErrorCode::NotFound
             | ErrorCode::InvalidState
             | ErrorCode::InteractionRequired
-            | ErrorCode::CostLimitExceeded => ExitCode::OperationFailed.into(),
+            | ErrorCode::CostLimitExceeded
+            | ErrorCode::DailyBudgetExceeded => ExitCode::OperationFailed.into(),
             ErrorCode::InternalError => ExitCode::OperationFailed.into(),
         }
     }

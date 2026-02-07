@@ -21,7 +21,7 @@ fn test_non_interactive_context() {
         "Should return error in non-interactive mode"
     );
     let err = error.unwrap();
-    assert_eq!(err.code, ErrorCode::InteractionRequired);
+    assert_eq!(err.code, ErrorCode::AuthRequired);
     assert_eq!(err.message, "Authentication credentials needed");
     assert!(!err.is_retryable);
 
@@ -62,11 +62,11 @@ fn test_demo_interactive_non_interactive_mode() {
         .output()
         .expect("Failed to execute command");
 
-    // Should exit with code 4 (OperationFailed)
+    // Should exit with code 3 (AuthenticationError)
     assert_eq!(
         output.status.code(),
-        Some(4),
-        "Should exit with code 4 for INTERACTION_REQUIRED"
+        Some(3),
+        "Should exit with code 3 for AUTH_REQUIRED"
     );
 
     // Parse JSON output
@@ -76,12 +76,12 @@ fn test_demo_interactive_non_interactive_mode() {
     // Verify error structure
     assert_eq!(json["ok"], false, "ok should be false");
     assert_eq!(
-        json["error"]["code"], "INTERACTION_REQUIRED",
-        "Should return INTERACTION_REQUIRED error"
+        json["error"]["code"], "AUTH_REQUIRED",
+        "Should return AUTH_REQUIRED error"
     );
     assert_eq!(
         json["error"]["isRetryable"], false,
-        "INTERACTION_REQUIRED should not be retryable"
+        "AUTH_REQUIRED should not be retryable"
     );
 
     // Verify nextSteps in details

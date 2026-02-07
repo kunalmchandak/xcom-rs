@@ -34,10 +34,10 @@ impl ExecutionContext {
         }
     }
 
-    /// Check if interaction is required and return an error if in non-interactive mode
+    /// Check if authentication is required and return an error if in non-interactive mode
     ///
-    /// This helper should be called by commands that need user interaction.
-    /// If in non-interactive mode, it returns an INTERACTION_REQUIRED error with next steps.
+    /// This helper should be called by commands that need authentication or user interaction.
+    /// If in non-interactive mode, it returns an AUTH_REQUIRED error with next steps.
     /// Otherwise, it allows the command to proceed with interactive prompts.
     ///
     /// # Example
@@ -58,7 +58,7 @@ impl ExecutionContext {
         next_steps: Vec<String>,
     ) -> Option<ErrorDetails> {
         if self.non_interactive {
-            Some(ErrorDetails::interaction_required(message, next_steps))
+            Some(ErrorDetails::auth_required(message, next_steps))
         } else {
             None
         }
@@ -101,7 +101,7 @@ impl ExecutionContext {
                 details.insert("dailyLimit".to_string(), serde_json::json!(limit));
             }
             return Some(ErrorDetails::with_details(
-                ErrorCode::CostLimitExceeded,
+                ErrorCode::DailyBudgetExceeded,
                 "Daily budget exceeded".to_string(),
                 details,
             ));
@@ -129,7 +129,7 @@ mod tests {
             ctx.check_interaction_required("Auth required", vec!["Run login command".to_string()]);
         assert!(error.is_some());
         let err = error.unwrap();
-        assert_eq!(err.code, ErrorCode::InteractionRequired);
+        assert_eq!(err.code, ErrorCode::AuthRequired);
         assert!(!err.is_retryable);
         assert!(err.details.is_some());
     }
@@ -177,6 +177,6 @@ mod tests {
         let error = ctx.check_daily_budget(&cost, &tracker);
         assert!(error.is_some());
         let err = error.unwrap();
-        assert_eq!(err.code, ErrorCode::CostLimitExceeded);
+        assert_eq!(err.code, ErrorCode::DailyBudgetExceeded);
     }
 }

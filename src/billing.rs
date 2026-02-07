@@ -1,6 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Cost estimate for an operation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -39,6 +40,8 @@ pub struct BillingEstimate {
 pub struct BudgetTracker {
     daily_limit: Option<u32>,
     usage: HashMap<String, u32>, // date -> credits used
+    #[serde(skip)]
+    storage_path: Option<PathBuf>,
 }
 
 impl BudgetTracker {
@@ -46,7 +49,53 @@ impl BudgetTracker {
         Self {
             daily_limit,
             usage: HashMap::new(),
+            storage_path: None,
         }
+    }
+
+    /// Create a budget tracker with persistent storage at the given path
+    pub fn with_storage(daily_limit: Option<u32>, path: PathBuf) -> Result<Self> {
+        let mut tracker = Self {
+            daily_limit,
+            usage: HashMap::new(),
+            storage_path: Some(path.clone()),
+        };
+
+        // Try to load existing usage from storage
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(loaded) = serde_json::from_str::<BudgetTracker>(&content) {
+                    tracker.usage = loaded.usage;
+                    // Update daily_limit from parameter, not from storage
+                }
+            }
+        }
+
+        Ok(tracker)
+    }
+
+    /// Get default storage path: ~/.config/xcom-rs/budget.json
+    pub fn default_storage_path() -> Result<PathBuf> {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
+        let config_dir = PathBuf::from(home).join(".config").join("xcom-rs");
+        std::fs::create_dir_all(&config_dir)?;
+        Ok(config_dir.join("budget.json"))
+    }
+
+    /// Create a budget tracker with default storage location
+    pub fn with_default_storage(daily_limit: Option<u32>) -> Result<Self> {
+        Self::with_storage(daily_limit, Self::default_storage_path()?)
+    }
+
+    /// Save the current usage to persistent storage
+    fn save_to_storage(&self) -> Result<()> {
+        if let Some(path) = &self.storage_path {
+            let json = serde_json::to_string_pretty(self)?;
+            std::fs::write(path, json)?;
+        }
+        Ok(())
     }
 
     /// Get today's date as a string (YYYY-MM-DD)
@@ -82,6 +131,7 @@ impl BudgetTracker {
         let today = Self::today();
         let used = self.usage.entry(today).or_insert(0);
         *used += cost;
+        let _ = self.save_to_storage(); // Ignore errors here to not break the flow
     }
 
     /// Get today's usage
