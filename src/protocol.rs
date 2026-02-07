@@ -138,6 +138,13 @@ impl ErrorDetails {
         details.insert("nextSteps".to_string(), serde_json::json!(next_steps));
         Self::with_details(ErrorCode::InteractionRequired, message, details)
     }
+
+    /// Create an auth required error with next steps guidance
+    pub fn auth_required(message: impl Into<String>, next_steps: Vec<String>) -> Self {
+        let mut details = HashMap::new();
+        details.insert("nextSteps".to_string(), serde_json::json!(next_steps));
+        Self::with_details(ErrorCode::AuthRequired, message, details)
+    }
 }
 
 /// Error code vocabulary
@@ -149,6 +156,7 @@ pub enum ErrorCode {
     UnknownCommand,
     AuthenticationFailed,
     AuthorizationFailed,
+    AuthRequired,
     #[serde(rename = "rate_limited")]
     RateLimitExceeded,
     NetworkError,
@@ -158,6 +166,8 @@ pub enum ErrorCode {
     InvalidState,
     InteractionRequired,
     IdempotencyConflict,
+    CostLimitExceeded,
+    DailyBudgetExceeded,
 }
 
 impl ErrorCode {
@@ -175,16 +185,18 @@ impl ErrorCode {
             ErrorCode::InvalidArgument | ErrorCode::MissingArgument | ErrorCode::UnknownCommand => {
                 ExitCode::InvalidArgument.into()
             }
-            ErrorCode::AuthenticationFailed | ErrorCode::AuthorizationFailed => {
-                ExitCode::AuthenticationError.into()
-            }
+            ErrorCode::AuthenticationFailed
+            | ErrorCode::AuthorizationFailed
+            | ErrorCode::AuthRequired => ExitCode::AuthenticationError.into(),
             ErrorCode::RateLimitExceeded
             | ErrorCode::NetworkError
             | ErrorCode::ServiceUnavailable
             | ErrorCode::NotFound
             | ErrorCode::InvalidState
             | ErrorCode::InteractionRequired
-            | ErrorCode::IdempotencyConflict => ExitCode::OperationFailed.into(),
+            | ErrorCode::IdempotencyConflict
+            | ErrorCode::CostLimitExceeded
+            | ErrorCode::DailyBudgetExceeded => ExitCode::OperationFailed.into(),
             ErrorCode::InternalError => ExitCode::OperationFailed.into(),
         }
     }
@@ -211,9 +223,9 @@ impl ExitCode {
             ErrorCode::InvalidArgument | ErrorCode::MissingArgument | ErrorCode::UnknownCommand => {
                 ExitCode::InvalidArgument
             }
-            ErrorCode::AuthenticationFailed | ErrorCode::AuthorizationFailed => {
-                ExitCode::AuthenticationError
-            }
+            ErrorCode::AuthenticationFailed
+            | ErrorCode::AuthorizationFailed
+            | ErrorCode::AuthRequired => ExitCode::AuthenticationError,
             _ => ExitCode::OperationFailed,
         }
     }
@@ -256,8 +268,10 @@ mod tests {
     fn test_exit_codes() {
         assert_eq!(ErrorCode::InvalidArgument.exit_code(), 2);
         assert_eq!(ErrorCode::AuthenticationFailed.exit_code(), 3);
+        assert_eq!(ErrorCode::AuthRequired.exit_code(), 3);
         assert_eq!(ErrorCode::NetworkError.exit_code(), 4);
         assert_eq!(ErrorCode::InteractionRequired.exit_code(), 4);
+        assert_eq!(ErrorCode::CostLimitExceeded.exit_code(), 4);
     }
 
     #[test]

@@ -1,0 +1,9 @@
+- Build: `cargo build`, `make build`, release `cargo build --release`.
+- Run: `cargo run -- [args]`.
+- Test: `cargo test`, `make test`.
+- Format: `cargo fmt` or `cargo fmt -- --check`, `make fmt`.
+- Lint: `cargo clippy -- -D warnings`, `make lint`.
+- Full checks: `make check`.
+- Install: `cargo install --path .`, `make install`.
+- Clean: `cargo clean`, `make clean`.
+- Setup hooks: `make setup` or `make pre-commit-hooks`.
