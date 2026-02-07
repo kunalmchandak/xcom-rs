@@ -6,3 +6,11 @@
 - [x] `schema --command <name> --output json-schema` を実装し、入出力Schemaを取得可能にする（確認: `cargo run -- schema --command commands --output json-schema` が成功する）。
 - [x] `help <command> --output json` を実装し、終了コードとエラー語彙を返す（確認: `cargo run -- help commands --output json` に `exitCodes` が含まれる）。
 - [x] `--trace-id` と `--log-format json` を実装し、ログ相関可能にする（確認: stderrログに `traceId` が出力される）。
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `--trace-id` 指定時にレスポンスEnvelopeの `meta.traceId` へも値を反映する（現状は `src/main.rs` の `Envelope::success(...)` / `Envelope::error(...)` を使用しており `meta` が常に `None` のため、`cli-core/spec.md` の trace-id伝播要件を満たしていない）。
+- [x] `help <command> --output json` の `data` に `examples[]` と `errorVocabulary[]` を追加し、`cli-introspection/spec.md` の必須フィールド名に合わせる（現状 `src/introspection.rs` の `CommandHelp` は `exitCodes` と `errors` のみ）。
+- [x] `schema --command <name> --output json-schema` が返す `outputSchema` を「data本体」ではなくEnvelope全体（`ok/type/schemaVersion/data/error/meta`）のJSON Schemaに修正する（現状 `src/introspection.rs::CommandSchema::for_command` は `commands` 等のデータ形のみを返却）。
+- [x] `--non-interactive` を実行フローへ統合し、対話が必要なケースでプロンプト表示せず構造化エラーと次手順を返す実装を追加する（現状 `src/cli.rs` で定義のみ、`src/main.rs` 含む実行経路で未参照）。
+- [x] `--help` / `--version` の回帰を修正し成功系として扱う（現状 `src/main.rs` の `Cli::try_parse()` エラー分岐で `DisplayHelp`/`DisplayVersion` も `INVALID_ARGUMENT` + exit code 2 に変換される）。

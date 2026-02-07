@@ -112,6 +112,13 @@ impl ErrorDetails {
             details: Some(details),
         }
     }
+
+    /// Create an interaction required error with next steps guidance
+    pub fn interaction_required(message: impl Into<String>, next_steps: Vec<String>) -> Self {
+        let mut details = HashMap::new();
+        details.insert("nextSteps".to_string(), serde_json::json!(next_steps));
+        Self::with_details(ErrorCode::InteractionRequired, message, details)
+    }
 }
 
 /// Error code vocabulary
@@ -129,6 +136,7 @@ pub enum ErrorCode {
     InternalError,
     NotFound,
     InvalidState,
+    InteractionRequired,
 }
 
 impl ErrorCode {
@@ -153,7 +161,8 @@ impl ErrorCode {
             | ErrorCode::NetworkError
             | ErrorCode::ServiceUnavailable
             | ErrorCode::NotFound
-            | ErrorCode::InvalidState => ExitCode::OperationFailed.into(),
+            | ErrorCode::InvalidState
+            | ErrorCode::InteractionRequired => ExitCode::OperationFailed.into(),
             ErrorCode::InternalError => ExitCode::OperationFailed.into(),
         }
     }
@@ -226,5 +235,19 @@ mod tests {
         assert_eq!(ErrorCode::InvalidArgument.exit_code(), 2);
         assert_eq!(ErrorCode::AuthenticationFailed.exit_code(), 3);
         assert_eq!(ErrorCode::NetworkError.exit_code(), 4);
+        assert_eq!(ErrorCode::InteractionRequired.exit_code(), 4);
+    }
+
+    #[test]
+    fn test_interaction_required_error() {
+        let error = ErrorDetails::interaction_required(
+            "Authentication required",
+            vec!["Run 'xcom-rs auth login' first".to_string()],
+        );
+        assert_eq!(error.code, ErrorCode::InteractionRequired);
+        assert!(!error.is_retryable);
+        assert!(error.details.is_some());
+        let details = error.details.unwrap();
+        assert!(details.contains_key("nextSteps"));
     }
 }

@@ -96,6 +96,36 @@ pub struct CommandSchema {
 }
 
 impl CommandSchema {
+    /// Helper to create envelope schema wrapping the data schema
+    fn wrap_in_envelope_schema(data_schema: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["ok", "type", "schemaVersion"],
+            "properties": {
+                "ok": { "type": "boolean" },
+                "type": { "type": "string" },
+                "schemaVersion": { "type": "integer", "const": 1 },
+                "data": data_schema,
+                "error": {
+                    "type": "object",
+                    "required": ["code", "message", "isRetryable"],
+                    "properties": {
+                        "code": { "type": "string" },
+                        "message": { "type": "string" },
+                        "isRetryable": { "type": "boolean" },
+                        "details": { "type": "object" }
+                    }
+                },
+                "meta": {
+                    "type": "object",
+                    "properties": {
+                        "traceId": { "type": "string" }
+                    }
+                }
+            }
+        })
+    }
+
     pub fn for_command(command: &str) -> Self {
         match command {
             "commands" => Self {
@@ -105,7 +135,7 @@ impl CommandSchema {
                     "properties": {},
                     "additionalProperties": false
                 }),
-                output_schema: serde_json::json!({
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
                     "type": "object",
                     "required": ["commands"],
                     "properties": {
@@ -140,7 +170,7 @@ impl CommandSchema {
                             }
                         }
                     }
-                }),
+                })),
             },
             "schema" => Self {
                 command: command.to_string(),
@@ -151,7 +181,7 @@ impl CommandSchema {
                         "command": { "type": "string" }
                     }
                 }),
-                output_schema: serde_json::json!({
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
                     "type": "object",
                     "required": ["command", "inputSchema", "outputSchema"],
                     "properties": {
@@ -159,7 +189,7 @@ impl CommandSchema {
                         "inputSchema": { "type": "object" },
                         "outputSchema": { "type": "object" }
                     }
-                }),
+                })),
             },
             "help" => Self {
                 command: command.to_string(),
@@ -170,9 +200,9 @@ impl CommandSchema {
                         "command": { "type": "string" }
                     }
                 }),
-                output_schema: serde_json::json!({
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
                     "type": "object",
-                    "required": ["command", "description", "usage", "exitCodes"],
+                    "required": ["command", "description", "usage", "exitCodes", "errorVocabulary", "examples"],
                     "properties": {
                         "command": { "type": "string" },
                         "description": { "type": "string" },
@@ -188,7 +218,7 @@ impl CommandSchema {
                                 }
                             }
                         },
-                        "errors": {
+                        "errorVocabulary": {
                             "type": "array",
                             "items": {
                                 "type": "object",
@@ -199,9 +229,20 @@ impl CommandSchema {
                                     "isRetryable": { "type": "boolean" }
                                 }
                             }
+                        },
+                        "examples": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["description", "command"],
+                                "properties": {
+                                    "description": { "type": "string" },
+                                    "command": { "type": "string" }
+                                }
+                            }
                         }
                     }
-                }),
+                })),
             },
             _ => Self {
                 command: command.to_string(),
@@ -209,10 +250,10 @@ impl CommandSchema {
                     "type": "object",
                     "properties": {}
                 }),
-                output_schema: serde_json::json!({
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
                     "type": "object",
                     "properties": {}
-                }),
+                })),
             },
         }
     }
@@ -234,6 +275,13 @@ pub struct ErrorCodeInfo {
     pub is_retryable: bool,
 }
 
+/// Example usage of a command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExampleInfo {
+    pub description: String,
+    pub command: String,
+}
+
 /// Detailed help for a command
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandHelp {
@@ -242,8 +290,9 @@ pub struct CommandHelp {
     pub usage: String,
     #[serde(rename = "exitCodes")]
     pub exit_codes: Vec<ExitCodeInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub errors: Option<Vec<ErrorCodeInfo>>,
+    #[serde(rename = "errorVocabulary")]
+    pub error_vocabulary: Vec<ErrorCodeInfo>,
+    pub examples: Vec<ExampleInfo>,
 }
 
 impl CommandHelp {
@@ -268,7 +317,7 @@ impl CommandHelp {
             },
         ];
 
-        let errors = Some(vec![
+        let error_vocabulary = vec![
             ErrorCodeInfo {
                 code: "INVALID_ARGUMENT".to_string(),
                 description: "Invalid argument provided".to_string(),
@@ -314,7 +363,13 @@ impl CommandHelp {
                 description: "Internal error occurred".to_string(),
                 is_retryable: false,
             },
-        ]);
+            ErrorCodeInfo {
+                code: "INTERACTION_REQUIRED".to_string(),
+                description: "User interaction required but --non-interactive mode is enabled"
+                    .to_string(),
+                is_retryable: false,
+            },
+        ];
 
         match command {
             "commands" => Self {
@@ -322,28 +377,59 @@ impl CommandHelp {
                 description: "List all available commands with metadata".to_string(),
                 usage: "xcom-rs commands [--output json|yaml|text]".to_string(),
                 exit_codes,
-                errors,
+                error_vocabulary,
+                examples: vec![
+                    ExampleInfo {
+                        description: "List commands in JSON format".to_string(),
+                        command: "xcom-rs commands --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "List commands in text format".to_string(),
+                        command: "xcom-rs commands --output text".to_string(),
+                    },
+                ],
             },
             "schema" => Self {
                 command: command.to_string(),
                 description: "Get JSON schema for command input/output".to_string(),
                 usage: "xcom-rs schema --command <name> [--output json|yaml|text]".to_string(),
                 exit_codes,
-                errors,
+                error_vocabulary,
+                examples: vec![
+                    ExampleInfo {
+                        description: "Get schema for commands command".to_string(),
+                        command: "xcom-rs schema --command commands --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get schema for help command".to_string(),
+                        command: "xcom-rs schema --command help --output json".to_string(),
+                    },
+                ],
             },
             "help" => Self {
                 command: command.to_string(),
                 description: "Get detailed help for a command including exit codes".to_string(),
                 usage: "xcom-rs help <command> [--output json|yaml|text]".to_string(),
                 exit_codes,
-                errors,
+                error_vocabulary,
+                examples: vec![
+                    ExampleInfo {
+                        description: "Get help for commands command".to_string(),
+                        command: "xcom-rs help commands --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get help for schema command".to_string(),
+                        command: "xcom-rs help schema --output json".to_string(),
+                    },
+                ],
             },
             _ => Self {
                 command: command.to_string(),
                 description: format!("Help for {}", command),
                 usage: format!("xcom-rs {} [options]", command),
                 exit_codes,
-                errors,
+                error_vocabulary,
+                examples: vec![],
             },
         }
     }
@@ -375,6 +461,7 @@ mod tests {
         let help = CommandHelp::for_command("commands");
         assert_eq!(help.command, "commands");
         assert!(!help.exit_codes.is_empty());
-        assert!(help.errors.is_some());
+        assert!(!help.error_vocabulary.is_empty());
+        assert!(!help.examples.is_empty());
     }
 }
