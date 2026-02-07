@@ -14,3 +14,7 @@
 - [x] `schema --command <name> --output json-schema` が返す `outputSchema` を「data本体」ではなくEnvelope全体（`ok/type/schemaVersion/data/error/meta`）のJSON Schemaに修正する（現状 `src/introspection.rs::CommandSchema::for_command` は `commands` 等のデータ形のみを返却）。
 - [x] `--non-interactive` を実行フローへ統合し、対話が必要なケースでプロンプト表示せず構造化エラーと次手順を返す実装を追加する（現状 `src/cli.rs` で定義のみ、`src/main.rs` 含む実行経路で未参照）。
 - [x] `--help` / `--version` の回帰を修正し成功系として扱う（現状 `src/main.rs` の `Cli::try_parse()` エラー分岐で `DisplayHelp`/`DisplayVersion` も `INVALID_ARGUMENT` + exit code 2 に変換される）。
+
+## Acceptance #2 Failure Follow-up
+
+- [x] `--non-interactive` を実行フローで実際に参照し、対話が必要なケースで `INTERACTION_REQUIRED` と `details.nextSteps` を含む構造化エラーを返すように統合する（`src/cli.rs` の `non_interactive` は定義済みだが `src/main.rs::main` のコマンド実行分岐で未使用、`src/protocol.rs::ErrorDetails::interaction_required` も実行経路から未呼び出し）。

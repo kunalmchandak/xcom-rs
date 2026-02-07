@@ -49,25 +49,25 @@ mod tests {
 
     #[test]
     fn test_cli_parsing() {
-        let cli = Cli::parse_from(&["xcom-rs", "commands"]);
+        let cli = Cli::parse_from(["xcom-rs", "commands"]);
         assert!(matches!(cli.command, Commands::Commands));
     }
 
     #[test]
     fn test_cli_with_output_format() {
-        let cli = Cli::parse_from(&["xcom-rs", "--output", "json", "commands"]);
+        let cli = Cli::parse_from(["xcom-rs", "--output", "json", "commands"]);
         assert_eq!(cli.output, "json");
     }
 
     #[test]
     fn test_cli_with_trace_id() {
-        let cli = Cli::parse_from(&["xcom-rs", "--trace-id", "test-123", "commands"]);
+        let cli = Cli::parse_from(["xcom-rs", "--trace-id", "test-123", "commands"]);
         assert_eq!(cli.trace_id, Some("test-123".to_string()));
     }
 
     #[test]
     fn test_schema_command() {
-        let cli = Cli::parse_from(&["xcom-rs", "schema", "--command", "commands"]);
+        let cli = Cli::parse_from(["xcom-rs", "schema", "--command", "commands"]);
         if let Commands::Schema { command, .. } = cli.command {
             assert_eq!(command, "commands");
         } else {
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_help_command() {
-        let cli = Cli::parse_from(&["xcom-rs", "help", "commands"]);
+        let cli = Cli::parse_from(["xcom-rs", "help", "commands"]);
         if let Commands::Help { command } = cli.command {
             assert_eq!(command, "commands");
         } else {

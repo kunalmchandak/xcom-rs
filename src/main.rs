@@ -2,6 +2,7 @@ use clap::Parser;
 use std::str::FromStr;
 use xcom_rs::{
     cli::{Cli, Commands},
+    context::ExecutionContext,
     introspection::{CommandHelp, CommandSchema, CommandsList},
     logging::{init_logging, LogFormat},
     output::{print_envelope, OutputFormat},
@@ -74,7 +75,17 @@ fn main() {
         })
     };
 
+    // Create execution context for commands
+    let ctx = ExecutionContext::new(cli.non_interactive, cli.trace_id.clone());
+
+    // Log non-interactive mode if enabled
+    if ctx.non_interactive {
+        tracing::info!("Running in non-interactive mode");
+    }
+
     // Execute command
+    // Note: ExecutionContext is available for commands that need to check interaction requirements
+    // Commands can use ctx.check_interaction_required() to handle non-interactive mode properly
     let result = match cli.command {
         Commands::Commands => {
             tracing::info!("Executing commands command");
