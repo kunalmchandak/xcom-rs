@@ -1,0 +1,8 @@
+- [ ] `auth status --output json` のレスポンス型を実装し、`authenticated` `authMode` `scopes` `nextSteps` を返す（確認: 未認証fixtureで `authenticated=false` と `nextSteps` が出る）。
+- [ ] `auth export` / `auth import` の入出力仕様を実装し、非対話モードで往復可能にする（確認: export結果をimportして `auth status` が復元状態を返す）。
+- [ ] `--non-interactive` 時の認証未完了エラーを構造化し、ブラウザ誘導の代わりに手順を返す（確認: `error.code=auth_required` と `nextSteps` が含まれる）。
+- [ ] `billing estimate` を実装し、操作別に `cost.credits` と `cost.usdEstimated` を返す（確認: `billing estimate tweets.create --text "hello" --output json` で両フィールドが存在）。
+- [ ] `--max-cost-credits` ガードを実装し、見積超過時は実行前に失敗させる（確認: 上限1で見積2以上の操作を実行した場合に `error.code=cost_limit_exceeded` を返す）。
+- [ ] `--budget-daily-credits` のローカル日次集計を実装する（確認: fixtureで当日累積超過時にブロックされる）。
+- [ ] `--dry-run` を実装し、課金ゼロで見積のみ返す（確認: `meta.cost.credits=0` と `meta.dryRun=true` が返る）。
+- [ ] 外部依存を排除するため、認証・課金のstub/fixtureテストを追加する（確認: ネットワーク遮断状態でもテストが成功する）。
