@@ -13,3 +13,7 @@
 - [x] 5. テストを追加する
    - 変更箇所: `tests/`
    - 検証: `cargo test auth_import_dry_run` がパスする
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `src/auth.rs` の `AuthStore::import_with_plan` は既存トークンがある場合に常に `ImportAction::Update` を返しており（`src/auth.rs:248`）、同一データ再インポート時の `ImportAction::Skip` 分類が実装されていません。既存トークンと入力トークンを比較して no-op 時に `ImportPlan::skip(...)` を返す実装を追加し、`tests/auth_billing_test.rs` に skip ケース（同一データ dry-run で `data.action == "skip"`）の統合テストを追加してください。

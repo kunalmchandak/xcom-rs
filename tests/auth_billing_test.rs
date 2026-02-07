@@ -457,6 +457,74 @@ fn test_auth_import_dry_run_update() {
 }
 
 #[test]
+fn test_auth_import_dry_run_skip() {
+    // Test dry-run mode for skip action when importing identical data
+    let test_dir =
+        std::env::temp_dir().join(format!("xcom-rs-dry-run-skip-test-{}", std::process::id()));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+
+    // First, import some auth data without dry-run
+    let test_token_data = "STUB_B64_{\"accessToken\":\"test_token\",\"tokenType\":\"Bearer\",\"expiresAt\":null,\"scopes\":[\"read\",\"write\"]}";
+    let import_output = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "auth",
+            "import",
+            test_token_data,
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute initial auth import");
+
+    assert!(
+        import_output.status.success(),
+        "Initial import should succeed"
+    );
+
+    // Now test dry-run with the same data
+    let dry_run_output = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "auth",
+            "import",
+            "--dry-run",
+            test_token_data,
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute auth import dry-run");
+
+    assert!(
+        dry_run_output.status.success(),
+        "Auth import dry-run should succeed"
+    );
+
+    let stdout = String::from_utf8_lossy(&dry_run_output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+
+    // Verify dry-run response with skip action
+    assert_eq!(json["ok"], true, "ok should be true");
+    assert_eq!(
+        json["data"]["action"], "skip",
+        "action should be skip when importing identical data"
+    );
+    assert_eq!(json["data"]["dryRun"], true, "dryRun should be true");
+    assert!(
+        json["data"]["reason"].is_string(),
+        "reason should be present for skip action"
+    );
+
+    // Cleanup
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+#[test]
 fn test_auth_import_dry_run_fail() {
     // Test dry-run mode with invalid data
     let test_dir =

@@ -102,7 +102,7 @@ impl AuthStatus {
 }
 
 /// Authentication token data for export/import
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuthToken {
     #[serde(rename = "accessToken")]
     pub access_token: String,
@@ -244,12 +244,25 @@ impl AuthStore {
             }
         };
 
-        // Determine the action
-        let action = if self.token.is_none() {
-            ImportAction::Create
-        } else {
-            ImportAction::Update
+        // Determine the action by comparing existing token with new token
+        let action = match &self.token {
+            None => ImportAction::Create,
+            Some(existing_token) => {
+                if existing_token == &token {
+                    ImportAction::Skip
+                } else {
+                    ImportAction::Update
+                }
+            }
         };
+
+        // If Skip action, return early without saving
+        if action == ImportAction::Skip {
+            return Ok(ImportPlan::skip(
+                "Token is identical to existing token".to_string(),
+                dry_run,
+            ));
+        }
 
         // If not dry-run, perform the actual import
         if !dry_run {
