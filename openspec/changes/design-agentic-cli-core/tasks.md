@@ -1,8 +1,0 @@
-- [ ] `src/protocol` 相当の共通レスポンス型を追加し、`ok/type/schemaVersion/data/error/meta` を必須フィールドとして実装する（確認: `cargo run -- commands --output json` の出力に `schemaVersion` が含まれる）。
-- [ ] 失敗時の構造化エラー型を追加し、`error.code`/`error.message`/`error.isRetryable` を返す（確認: 不正引数で `cargo run -- unknown` 実行時にJSONエラーが返る）。
-- [ ] 終了コード方針（0/2/3/4）を実装し、引数エラーと認証エラーを区別する（確認: 引数不正時の終了コードが2であることをシェルで確認）。
-- [ ] `--output json|yaml|text` をグローバルオプションとして導入する（確認: 同一コマンドで3形式が切替できる）。
-- [ ] `commands --output json` を実装し、サブコマンド・引数・危険度・課金有無を列挙する（確認: 出力JSONに `commands[]` と `risk` が存在する）。
-- [ ] `schema --command <name> --output json-schema` を実装し、入出力Schemaを取得可能にする（確認: `cargo run -- schema --command commands --output json-schema` が成功する）。
-- [ ] `help <command> --output json` を実装し、終了コードとエラー語彙を返す（確認: `cargo run -- help commands --output json` に `exitCodes` が含まれる）。
-- [ ] `--trace-id` と `--log-format json` を実装し、ログ相関可能にする（確認: stderrログに `traceId` が出力される）。
