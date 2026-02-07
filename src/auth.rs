@@ -2,6 +2,71 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Action to be performed during import
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ImportAction {
+    /// Create new authentication entry
+    Create,
+    /// Update existing authentication entry
+    Update,
+    /// Skip - no changes needed
+    Skip,
+    /// Failed with error
+    Fail,
+}
+
+/// Plan for a single import operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportPlan {
+    /// Action to be performed
+    pub action: ImportAction,
+    /// Optional reason (required for Fail action)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Whether this is a dry-run
+    #[serde(rename = "dryRun")]
+    pub dry_run: bool,
+}
+
+impl ImportPlan {
+    /// Create a plan for creating new auth
+    pub fn create(dry_run: bool) -> Self {
+        Self {
+            action: ImportAction::Create,
+            reason: None,
+            dry_run,
+        }
+    }
+
+    /// Create a plan for updating existing auth
+    pub fn update(dry_run: bool) -> Self {
+        Self {
+            action: ImportAction::Update,
+            reason: None,
+            dry_run,
+        }
+    }
+
+    /// Create a plan for skipping (no changes)
+    pub fn skip(reason: String, dry_run: bool) -> Self {
+        Self {
+            action: ImportAction::Skip,
+            reason: Some(reason),
+            dry_run,
+        }
+    }
+
+    /// Create a plan for failed import
+    pub fn fail(reason: String, dry_run: bool) -> Self {
+        Self {
+            action: ImportAction::Fail,
+            reason: Some(reason),
+            dry_run,
+        }
+    }
+}
+
 /// Authentication status response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthStatus {
@@ -37,7 +102,7 @@ impl AuthStatus {
 }
 
 /// Authentication token data for export/import
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuthToken {
     #[serde(rename = "accessToken")]
     pub access_token: String,
@@ -201,6 +266,66 @@ impl AuthStore {
         Ok(())
     }
 
+    /// Import authentication data with dry-run support
+    /// Returns an ImportPlan describing what would happen
+    pub fn import_with_plan(&mut self, data: &str, dry_run: bool) -> Result<ImportPlan> {
+        // Validate and parse the data
+        let token = match self.validate_import_data(data) {
+            Ok(token) => token,
+            Err(e) => {
+                return Ok(ImportPlan::fail(e.to_string(), dry_run));
+            }
+        };
+
+        // Determine the action by comparing existing token with new token
+        let action = match &self.token {
+            None => ImportAction::Create,
+            Some(existing_token) => {
+                if existing_token == &token {
+                    ImportAction::Skip
+                } else {
+                    ImportAction::Update
+                }
+            }
+        };
+
+        // If Skip action, return early without saving
+        if action == ImportAction::Skip {
+            return Ok(ImportPlan::skip(
+                "Token is identical to existing token".to_string(),
+                dry_run,
+            ));
+        }
+
+        // If not dry-run, perform the actual import
+        if !dry_run {
+            self.token = Some(token);
+            if let Err(e) = self.save_to_storage() {
+                return Ok(ImportPlan::fail(format!("Failed to save: {}", e), dry_run));
+            }
+        }
+
+        // Return the plan
+        let plan = match action {
+            ImportAction::Create => ImportPlan::create(dry_run),
+            ImportAction::Update => ImportPlan::update(dry_run),
+            _ => unreachable!(),
+        };
+
+        Ok(plan)
+    }
+
+    /// Validate import data and return parsed token
+    fn validate_import_data(&self, data: &str) -> Result<AuthToken> {
+        let json =
+            base64::decode(data).map_err(|e| anyhow::anyhow!("Invalid auth data format: {}", e))?;
+        let json_str = String::from_utf8(json)
+            .map_err(|e| anyhow::anyhow!("Invalid auth data encoding: {}", e))?;
+        let token: AuthToken = serde_json::from_str(&json_str)
+            .map_err(|e| anyhow::anyhow!("Invalid auth data structure: {}", e))?;
+        Ok(token)
+    }
+
     /// Set a token (for testing)
     pub fn set_token(&mut self, token: AuthToken) {
         self.token = Some(token);
@@ -331,6 +456,89 @@ mod tests {
         let mut store = AuthStore::new();
         let result = store.import("invalid_data");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_import_plan_create() {
+        let mut store = AuthStore::new();
+        let token = AuthToken {
+            access_token: "test_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+        let exported = base64::encode(serde_json::to_string(&token).unwrap());
+
+        let plan = store.import_with_plan(&exported, true).unwrap();
+        assert_eq!(plan.action, ImportAction::Create);
+        assert!(plan.dry_run);
+        assert!(plan.reason.is_none());
+
+        // Verify no token was set in dry-run
+        assert!(!store.is_authenticated());
+    }
+
+    #[test]
+    fn test_import_plan_update() {
+        let mut store = AuthStore::new();
+        let token1 = AuthToken {
+            access_token: "old_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+        store.set_token(token1);
+
+        let token2 = AuthToken {
+            access_token: "new_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["write".to_string()],
+        };
+        let exported = base64::encode(serde_json::to_string(&token2).unwrap());
+
+        let plan = store.import_with_plan(&exported, true).unwrap();
+        assert_eq!(plan.action, ImportAction::Update);
+        assert!(plan.dry_run);
+
+        // Verify old token is still there in dry-run
+        assert_eq!(
+            store.token.as_ref().unwrap().access_token,
+            "old_token".to_string()
+        );
+    }
+
+    #[test]
+    fn test_import_plan_fail() {
+        let mut store = AuthStore::new();
+        let plan = store.import_with_plan("invalid_data", true).unwrap();
+        assert_eq!(plan.action, ImportAction::Fail);
+        assert!(plan.dry_run);
+        assert!(plan.reason.is_some());
+        assert!(plan.reason.unwrap().contains("Invalid"));
+    }
+
+    #[test]
+    fn test_import_plan_actual_import() {
+        let mut store = AuthStore::new();
+        let token = AuthToken {
+            access_token: "test_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+        let exported = base64::encode(serde_json::to_string(&token).unwrap());
+
+        let plan = store.import_with_plan(&exported, false).unwrap();
+        assert_eq!(plan.action, ImportAction::Create);
+        assert!(!plan.dry_run);
+
+        // Verify token was actually set
+        assert!(store.is_authenticated());
+        assert_eq!(
+            store.token.as_ref().unwrap().access_token,
+            "test_token".to_string()
+        );
     }
 
     #[test]
