@@ -1,5 +1,4 @@
 use clap::Parser;
-use std::collections::HashMap;
 use std::str::FromStr;
 use xcom_rs::{
     cli::{Cli, Commands, TweetsCommands},
@@ -199,36 +198,22 @@ fn main() {
                             print_envelope(&envelope, output_format)
                         }
                         Err(e) => {
-                            // Determine error code and details based on error type
-                            let (error_code, details) =
-                                if e.downcast_ref::<IdempotencyConflictError>().is_some() {
-                                    (ErrorCode::IdempotencyConflict, None)
-                                } else if let Some(classified) = e.downcast_ref::<ClassifiedError>()
-                                {
-                                    // Use ClassifiedError to get proper error code and retry info
-                                    let mut error_details = HashMap::new();
-                                    if let Some(retry_after_ms) = classified.retry_after_ms {
-                                        error_details.insert(
-                                            "retryAfterMs".to_string(),
-                                            serde_json::json!(retry_after_ms),
-                                        );
-                                    }
-                                    (
+                            // Determine error code and retry info based on error type
+                            let error = if e.downcast_ref::<IdempotencyConflictError>().is_some() {
+                                ErrorDetails::new(ErrorCode::IdempotencyConflict, e.to_string())
+                            } else if let Some(classified) = e.downcast_ref::<ClassifiedError>() {
+                                // Use ClassifiedError to get proper error code and retry info
+                                if let Some(retry_after_ms) = classified.retry_after_ms {
+                                    ErrorDetails::with_retry_after(
                                         classified.to_error_code(),
-                                        if error_details.is_empty() {
-                                            None
-                                        } else {
-                                            Some(error_details)
-                                        },
+                                        e.to_string(),
+                                        retry_after_ms,
                                     )
                                 } else {
-                                    (ErrorCode::InternalError, None)
-                                };
-
-                            let error = if let Some(details) = details {
-                                ErrorDetails::with_details(error_code, e.to_string(), details)
+                                    ErrorDetails::new(classified.to_error_code(), e.to_string())
+                                }
                             } else {
-                                ErrorDetails::new(error_code, e.to_string())
+                                ErrorDetails::new(ErrorCode::InternalError, e.to_string())
                             };
 
                             let envelope = if let Some(meta) = create_meta() {
@@ -280,32 +265,20 @@ fn main() {
                         }
                         Err(e) => {
                             // Classify error if possible
-                            let (error_code, details) =
+                            let error =
                                 if let Some(classified) = e.downcast_ref::<ClassifiedError>() {
-                                    let mut error_details = HashMap::new();
                                     if let Some(retry_after_ms) = classified.retry_after_ms {
-                                        error_details.insert(
-                                            "retryAfterMs".to_string(),
-                                            serde_json::json!(retry_after_ms),
-                                        );
+                                        ErrorDetails::with_retry_after(
+                                            classified.to_error_code(),
+                                            e.to_string(),
+                                            retry_after_ms,
+                                        )
+                                    } else {
+                                        ErrorDetails::new(classified.to_error_code(), e.to_string())
                                     }
-                                    (
-                                        classified.to_error_code(),
-                                        if error_details.is_empty() {
-                                            None
-                                        } else {
-                                            Some(error_details)
-                                        },
-                                    )
                                 } else {
-                                    (ErrorCode::InternalError, None)
+                                    ErrorDetails::new(ErrorCode::InternalError, e.to_string())
                                 };
-
-                            let error = if let Some(details) = details {
-                                ErrorDetails::with_details(error_code, e.to_string(), details)
-                            } else {
-                                ErrorDetails::new(error_code, e.to_string())
-                            };
 
                             let envelope = if let Some(meta) = create_meta() {
                                 Envelope::<()>::error_with_meta("error", error, meta)

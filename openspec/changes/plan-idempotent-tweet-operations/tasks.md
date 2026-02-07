@@ -19,3 +19,9 @@
 - [x] 同一 `client_request_id` の既存判定をペイロード差分に依存させないよう修正する（`src/tweets/commands.rs::TweetCommand::create` の `ledger.lookup(&client_request_id, &request_hash)` と `src/tweets/ledger.rs::IdempotencyLedger::lookup` のハッシュ一致フィルタにより、`client_request_id` が既存でも別テキストで新規投稿される）。
 - [x] `tweets create --if-exists error` のエラーコードを仕様値 `idempotency_conflict` に一致させる（現状は `src/protocol.rs::ErrorCode` の `#[serde(rename_all = "SCREAMING_SNAKE_CASE")]` により `IDEMPOTENCY_CONFLICT` が返る）。
 - [x] 投稿系の再試行分類を実フローで発火可能に統合し、仕様どおり `error.code=rate_limited` と `error.retryAfterMs` を返せるようにする（`ClassifiedError::from_status_code/timeout` の生成が `src/tweets/commands.rs` のテスト内のみで、CLI経路では実際に生成されない）。
+
+## Acceptance #3 Failure Follow-up
+
+- [x] 投稿系で `ClassifiedError` を本番フローから実際に生成・伝播するよう統合する（現状 `ClassifiedError::from_status_code`/`timeout` の呼び出しは `src/tweets/commands.rs` と `tests/tweets_integration_test.rs` のテスト内のみで、`src/tweets/commands.rs::TweetCommand::create`/`list` からは生成されない）。
+- [x] レート制限時の `error.code` を仕様値 `rate_limited` に一致させる（現状 `src/tweets/commands.rs::ClassifiedError::to_error_code` は `ErrorCode::RateLimitExceeded` を返し、`src/protocol.rs` の `snake_case` シリアライズで `rate_limit_exceeded` になる）。
+- [x] レート制限時の待機情報を `error.retryAfterMs` 直下で返すようレスポンススキーマを修正する（現状 `src/main.rs` の `TweetsCommands::Create`/`List` のエラーハンドリングは `retryAfterMs` を `error.details.retryAfterMs` にのみ格納している）。

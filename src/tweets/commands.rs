@@ -197,6 +197,37 @@ impl TweetCommand {
 
     /// Create a tweet with idempotency support
     pub fn create(&self, args: CreateArgs) -> Result<CreateResult> {
+        // Check for simulated errors via environment variables (for testing)
+        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
+            match error_type.as_str() {
+                "rate_limit" => {
+                    let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(60000);
+                    return Err(ClassifiedError::from_status_code(
+                        429,
+                        "Rate limit exceeded".to_string(),
+                    )
+                    .with_retry_after(retry_after)
+                    .into());
+                }
+                "server_error" => {
+                    return Err(ClassifiedError::from_status_code(
+                        500,
+                        "Internal server error".to_string(),
+                    )
+                    .into());
+                }
+                "timeout" => {
+                    return Err(ClassifiedError::timeout("Request timeout".to_string()).into());
+                }
+                _ => {
+                    // Continue with normal flow for unknown error types
+                }
+            }
+        }
+
         // Generate client_request_id if not provided
         let client_request_id = args
             .client_request_id
@@ -255,6 +286,37 @@ impl TweetCommand {
 
     /// List tweets with field projection and pagination
     pub fn list(&self, args: ListArgs) -> Result<ListResult> {
+        // Check for simulated errors via environment variables (for testing)
+        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
+            match error_type.as_str() {
+                "rate_limit" => {
+                    let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(60000);
+                    return Err(ClassifiedError::from_status_code(
+                        429,
+                        "Rate limit exceeded".to_string(),
+                    )
+                    .with_retry_after(retry_after)
+                    .into());
+                }
+                "server_error" => {
+                    return Err(ClassifiedError::from_status_code(
+                        500,
+                        "Internal server error".to_string(),
+                    )
+                    .into());
+                }
+                "timeout" => {
+                    return Err(ClassifiedError::timeout("Request timeout".to_string()).into());
+                }
+                _ => {
+                    // Continue with normal flow for unknown error types
+                }
+            }
+        }
+
         // Simulate fetching tweets (in real implementation, would call X API)
         let limit = args.limit.unwrap_or(10);
 
