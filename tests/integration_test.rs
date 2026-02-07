@@ -76,12 +76,12 @@ fn test_demo_interactive_non_interactive_mode() {
     // Verify error structure
     assert_eq!(json["ok"], false, "ok should be false");
     assert_eq!(
-        json["error"]["code"], "AUTH_REQUIRED",
-        "Should return AUTH_REQUIRED error"
+        json["error"]["code"], "auth_required",
+        "Should return auth_required error"
     );
     assert_eq!(
         json["error"]["isRetryable"], false,
-        "AUTH_REQUIRED should not be retryable"
+        "auth_required should not be retryable"
     );
 
     // Verify nextSteps in details

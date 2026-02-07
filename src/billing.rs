@@ -86,14 +86,18 @@ impl BudgetTracker {
         Ok(tracker)
     }
 
-    /// Get default storage path: ~/.config/xcom-rs/budget.json
+    /// Get default storage path: respects XDG_DATA_HOME, falls back to ~/.config/xcom-rs/budget.json
     pub fn default_storage_path() -> Result<PathBuf> {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
-        let config_dir = PathBuf::from(home).join(".config").join("xcom-rs");
-        std::fs::create_dir_all(&config_dir)?;
-        Ok(config_dir.join("budget.json"))
+        let data_dir = if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
+            PathBuf::from(xdg_data).join("xcom-rs")
+        } else {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
+            PathBuf::from(home).join(".config").join("xcom-rs")
+        };
+        std::fs::create_dir_all(&data_dir)?;
+        Ok(data_dir.join("budget.json"))
     }
 
     /// Create a budget tracker with default storage location
@@ -370,5 +374,57 @@ mod tests {
 
         // Cleanup
         fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_default_storage_path_with_xdg_data_home() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        // Save current value
+        let original = std::env::var("XDG_DATA_HOME").ok();
+
+        // Set XDG_DATA_HOME
+        std::env::set_var("XDG_DATA_HOME", "/tmp/test-xdg-data");
+
+        let path = BudgetTracker::default_storage_path();
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XDG_DATA_HOME", val),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path
+            .to_string_lossy()
+            .contains("/tmp/test-xdg-data/xcom-rs/budget.json"));
+    }
+
+    #[test]
+    fn test_default_storage_path_without_xdg() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        // Save current value
+        let original = std::env::var("XDG_DATA_HOME").ok();
+
+        // Ensure XDG_DATA_HOME is not set
+        std::env::remove_var("XDG_DATA_HOME");
+
+        let path = BudgetTracker::default_storage_path();
+
+        // Restore original value
+        if let Some(val) = original {
+            std::env::set_var("XDG_DATA_HOME", val);
+        }
+
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        // Should fall back to ~/.config/xcom-rs/budget.json
+        assert!(path
+            .to_string_lossy()
+            .contains(".config/xcom-rs/budget.json"));
     }
 }

@@ -2,53 +2,47 @@ use clap::Parser;
 use std::str::FromStr;
 use xcom_rs::{
     auth::AuthStore,
-    billing::{BillingEstimate, BudgetTracker, CostEstimator},
-    cli::{AuthCommands, BillingCommands, Cli, Commands},
+    billing::{BillingEstimate, BudgetTracker, CostEstimate, CostEstimator},
+    cli::{AuthCommands, BillingCommands, Cli, Commands, TweetsCommands},
     context::ExecutionContext,
     introspection::{CommandHelp, CommandSchema, CommandsList},
     logging::{init_logging, LogFormat},
-    output::{print_envelope, OutputFormat},
+    output::{print_envelope, print_ndjson, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
+    tweets::{
+        ClassifiedError, CreateArgs, IdempotencyConflictError, IdempotencyLedger, IfExistsPolicy,
+        ListArgs, TweetCommand, TweetFields,
+    },
 };
 
 fn main() {
-    // Try to parse CLI, catch errors and convert to JSON
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
-        Err(e) => {
-            // Special handling for --help and --version (success cases)
-            match e.kind() {
-                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
-                    // Print help/version text to stdout and exit successfully
-                    print!("{}", e);
-                    std::process::exit(ExitCode::Success.into());
-                }
-                _ => {
-                    // Determine error type and exit code
-                    let (error_code, exit_code) = match e.kind() {
-                        clap::error::ErrorKind::InvalidSubcommand
-                        | clap::error::ErrorKind::UnknownArgument => {
-                            (ErrorCode::UnknownCommand, ExitCode::InvalidArgument)
-                        }
-                        _ => (ErrorCode::InvalidArgument, ExitCode::InvalidArgument),
-                    };
-
-                    let error = ErrorDetails::new(error_code, e.to_string());
-                    // Note: trace_id is not available at this point since CLI parsing failed
-                    let envelope = Envelope::<()>::error("error", error);
-                    // Use JSON format for errors by default
-                    let _ = print_envelope(&envelope, OutputFormat::Json);
-                    std::process::exit(exit_code.into());
-                }
+        Err(e) => match e.kind() {
+            clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
+                print!("{}", e);
+                std::process::exit(ExitCode::Success.into());
             }
-        }
+            _ => {
+                let (error_code, exit_code) = match e.kind() {
+                    clap::error::ErrorKind::InvalidSubcommand
+                    | clap::error::ErrorKind::UnknownArgument => {
+                        (ErrorCode::UnknownCommand, ExitCode::InvalidArgument)
+                    }
+                    _ => (ErrorCode::InvalidArgument, ExitCode::InvalidArgument),
+                };
+
+                let error = ErrorDetails::new(error_code, e.to_string());
+                let envelope = Envelope::<()>::error("error", error);
+                let _ = print_envelope(&envelope, OutputFormat::Json);
+                std::process::exit(exit_code.into());
+            }
+        },
     };
 
-    // Initialize logging
     let log_format = LogFormat::from_str(&cli.log_format).unwrap();
     init_logging(log_format, cli.trace_id.clone());
 
-    // Parse output format
     let output_format = match OutputFormat::from_str(&cli.output) {
         Ok(fmt) => fmt,
         Err(e) => {
@@ -68,7 +62,6 @@ fn main() {
         }
     };
 
-    // Helper function to create meta with trace_id if provided
     let create_meta = || -> Option<std::collections::HashMap<String, serde_json::Value>> {
         cli.trace_id.as_ref().map(|trace_id| {
             let mut m = std::collections::HashMap::new();
@@ -77,7 +70,6 @@ fn main() {
         })
     };
 
-    // Create execution context for commands
     let ctx = ExecutionContext::new(
         cli.non_interactive,
         cli.trace_id.clone(),
@@ -86,20 +78,15 @@ fn main() {
         cli.dry_run,
     );
 
-    // Log non-interactive mode if enabled
     if ctx.non_interactive {
         tracing::info!("Running in non-interactive mode");
     }
 
-    // Create auth store with persistent storage
     let mut auth_store = AuthStore::with_default_storage().unwrap_or_else(|e| {
         tracing::warn!(error = %e, "Failed to create persistent auth store, using in-memory store");
         AuthStore::new()
     });
 
-    // Execute command
-    // Note: ExecutionContext is available for commands that need to check interaction requirements
-    // Commands can use ctx.check_interaction_required() to handle non-interactive mode properly
     let result = match cli.command {
         Commands::Commands => {
             tracing::info!("Executing commands command");
@@ -134,7 +121,6 @@ fn main() {
         Commands::DemoInteractive => {
             tracing::info!("Executing demo-interactive command");
 
-            // Check if interaction is required and we're in non-interactive mode
             if let Some(error) = ctx.check_interaction_required(
                 "This command requires user confirmation",
                 vec![
@@ -142,7 +128,6 @@ fn main() {
                     "Or use --yes flag to auto-confirm (not implemented in this demo)".to_string(),
                 ],
             ) {
-                // Return structured error with next steps
                 let envelope = if let Some(meta) = create_meta() {
                     Envelope::<()>::error_with_meta("error", error, meta)
                 } else {
@@ -152,8 +137,6 @@ fn main() {
                 std::process::exit(ExitCode::AuthenticationError.into());
             }
 
-            // In interactive mode, would show prompt here
-            // For demo purposes, just return success
             #[derive(serde::Serialize)]
             struct DemoResult {
                 message: String,
@@ -171,6 +154,130 @@ fn main() {
                 Envelope::success("demo-interactive", result)
             };
             print_envelope(&envelope, output_format)
+        }
+        Commands::Tweets { command } => {
+            let ledger =
+                IdempotencyLedger::new(None).expect("Failed to initialize idempotency ledger");
+            let tweet_cmd = TweetCommand::new(ledger);
+
+            match command {
+                TweetsCommands::Create {
+                    text,
+                    client_request_id,
+                    if_exists,
+                } => {
+                    tracing::info!(text = %text, "Creating tweet");
+
+                    let if_exists_policy =
+                        IfExistsPolicy::from_str(&if_exists).unwrap_or_else(|e| {
+                            eprintln!("Invalid if-exists policy: {}", e);
+                            std::process::exit(ExitCode::InvalidArgument.into());
+                        });
+
+                    let args = CreateArgs {
+                        text,
+                        client_request_id,
+                        if_exists: if_exists_policy,
+                    };
+
+                    match tweet_cmd.create(args) {
+                        Ok(result) => {
+                            let envelope = if let Some(meta) = create_meta() {
+                                Envelope::success_with_meta("tweets.create", result, meta)
+                            } else {
+                                Envelope::success("tweets.create", result)
+                            };
+                            print_envelope(&envelope, output_format)
+                        }
+                        Err(e) => {
+                            let error = if e.downcast_ref::<IdempotencyConflictError>().is_some() {
+                                ErrorDetails::new(ErrorCode::IdempotencyConflict, e.to_string())
+                            } else if let Some(classified) = e.downcast_ref::<ClassifiedError>() {
+                                if let Some(retry_after_ms) = classified.retry_after_ms {
+                                    ErrorDetails::with_retry_after(
+                                        classified.to_error_code(),
+                                        e.to_string(),
+                                        retry_after_ms,
+                                    )
+                                } else {
+                                    ErrorDetails::new(classified.to_error_code(), e.to_string())
+                                }
+                            } else {
+                                ErrorDetails::new(ErrorCode::InternalError, e.to_string())
+                            };
+
+                            let envelope = if let Some(meta) = create_meta() {
+                                Envelope::<()>::error_with_meta("error", error, meta)
+                            } else {
+                                Envelope::<()>::error("error", error)
+                            };
+                            let _ = print_envelope(&envelope, output_format);
+                            std::process::exit(ExitCode::OperationFailed.into());
+                        }
+                    }
+                }
+                TweetsCommands::List {
+                    fields,
+                    limit,
+                    cursor,
+                } => {
+                    tracing::info!("Listing tweets");
+
+                    let field_list = if let Some(fields_str) = fields {
+                        fields_str
+                            .split(',')
+                            .filter_map(|s| TweetFields::parse(s.trim()))
+                            .collect()
+                    } else {
+                        TweetFields::default_fields()
+                    };
+
+                    let args = ListArgs {
+                        fields: field_list,
+                        limit,
+                        cursor,
+                    };
+
+                    match tweet_cmd.list(args) {
+                        Ok(result) => {
+                            if output_format == OutputFormat::Ndjson {
+                                print_ndjson(&result.tweets)
+                            } else {
+                                let envelope = if let Some(meta) = create_meta() {
+                                    Envelope::success_with_meta("tweets.list", result, meta)
+                                } else {
+                                    Envelope::success("tweets.list", result)
+                                };
+                                print_envelope(&envelope, output_format)
+                            }
+                        }
+                        Err(e) => {
+                            let error =
+                                if let Some(classified) = e.downcast_ref::<ClassifiedError>() {
+                                    if let Some(retry_after_ms) = classified.retry_after_ms {
+                                        ErrorDetails::with_retry_after(
+                                            classified.to_error_code(),
+                                            e.to_string(),
+                                            retry_after_ms,
+                                        )
+                                    } else {
+                                        ErrorDetails::new(classified.to_error_code(), e.to_string())
+                                    }
+                                } else {
+                                    ErrorDetails::new(ErrorCode::InternalError, e.to_string())
+                                };
+
+                            let envelope = if let Some(meta) = create_meta() {
+                                Envelope::<()>::error_with_meta("error", error, meta)
+                            } else {
+                                Envelope::<()>::error("error", error)
+                            };
+                            let _ = print_envelope(&envelope, output_format);
+                            std::process::exit(ExitCode::OperationFailed.into());
+                        }
+                    }
+                }
+            }
         }
         Commands::Auth { command } => {
             tracing::info!("Executing auth command");
@@ -251,8 +358,8 @@ fn main() {
         Commands::Billing { command } => {
             tracing::info!("Executing billing command");
             let estimator = CostEstimator::new();
-            let mut budget_tracker = BudgetTracker::with_default_storage(ctx.budget_daily_credits)
-                .unwrap_or_else(|e| {
+            let mut budget_tracker =
+                BudgetTracker::with_default_storage(ctx.budget_daily_credits).unwrap_or_else(|e| {
                     tracing::warn!(error = %e, "Failed to create persistent budget tracker, using in-memory tracker");
                     BudgetTracker::new(ctx.budget_daily_credits)
                 });
@@ -265,14 +372,12 @@ fn main() {
                         params.insert("text".to_string(), text_val);
                     }
 
-                    let cost = if ctx.dry_run {
-                        // In dry-run mode, return zero cost
-                        xcom_rs::billing::CostEstimate::zero()
+                    let cost: CostEstimate = if ctx.dry_run {
+                        CostEstimate::zero()
                     } else {
                         estimator.estimate(&operation, &params)
                     };
 
-                    // Check cost limits
                     if let Some(error) = ctx.check_max_cost(&cost) {
                         let envelope = if let Some(meta) = create_meta() {
                             Envelope::<()>::error_with_meta("error", error, meta)
@@ -293,7 +398,6 @@ fn main() {
                         std::process::exit(ExitCode::OperationFailed.into());
                     }
 
-                    // Record usage if not dry-run
                     if !ctx.dry_run {
                         budget_tracker.record_usage(cost.credits);
                     }
@@ -306,7 +410,6 @@ fn main() {
                     let mut meta_map = create_meta().unwrap_or_default();
                     if ctx.dry_run {
                         meta_map.insert("dryRun".to_string(), serde_json::json!(true));
-                        // Add cost to meta for dry-run
                         meta_map.insert(
                             "cost".to_string(),
                             serde_json::json!({
@@ -330,7 +433,7 @@ fn main() {
                         #[serde(rename = "todayUsage")]
                         today_usage: u32,
                     }
-                    // For now, return a stub report
+
                     let report = BillingReport { today_usage: 0 };
                     let envelope = if let Some(meta) = create_meta() {
                         Envelope::success_with_meta("billing.report", report, meta)
@@ -343,7 +446,6 @@ fn main() {
         }
     };
 
-    // Handle errors
     match result {
         Ok(_) => {
             tracing::info!("Command completed successfully");
