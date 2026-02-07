@@ -83,12 +83,16 @@ impl AuthStore {
         Ok(store)
     }
 
-    /// Get default storage path: ~/.config/xcom-rs/auth.json
+    /// Get default storage path: respects XDG_CONFIG_HOME, falls back to ~/.config/xcom-rs/auth.json
     pub fn default_storage_path() -> Result<PathBuf> {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
-        let config_dir = PathBuf::from(home).join(".config").join("xcom-rs");
+        let config_dir = if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
+            PathBuf::from(xdg_config).join("xcom-rs")
+        } else {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
+            PathBuf::from(home).join(".config").join("xcom-rs")
+        };
         std::fs::create_dir_all(&config_dir)?;
         Ok(config_dir.join("auth.json"))
     }
@@ -298,5 +302,56 @@ mod tests {
         let mut store = AuthStore::new();
         let result = store.import("invalid_data");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_default_storage_path_with_xdg_config_home() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        // Save current value
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+
+        // Set XDG_CONFIG_HOME
+        std::env::set_var("XDG_CONFIG_HOME", "/tmp/test-xdg-config");
+
+        let path = AuthStore::default_storage_path();
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path
+            .to_string_lossy()
+            .contains("/tmp/test-xdg-config/xcom-rs/auth.json"));
+    }
+
+    #[test]
+    fn test_default_storage_path_without_xdg() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        // Save current value
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+
+        // Ensure XDG_CONFIG_HOME is not set
+        std::env::remove_var("XDG_CONFIG_HOME");
+
+        let path = AuthStore::default_storage_path();
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => {}
+        }
+
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        // Should fall back to ~/.config/xcom-rs/auth.json
+        assert!(path.to_string_lossy().contains(".config/xcom-rs/auth.json"));
     }
 }

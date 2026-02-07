@@ -6,3 +6,6 @@ pub mod introspection;
 pub mod logging;
 pub mod output;
 pub mod protocol;
+
+#[cfg(test)]
+mod test_utils;
