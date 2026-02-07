@@ -1,0 +1,5 @@
+- Follow Rustfmt (`rustfmt.toml`) and clippy (`clippy.toml`).
+- Naming: snake_case functions/variables, PascalCase types, SCREAMING_SNAKE_CASE constants.
+- Keep `main.rs` thin; business logic in library/modules.
+- Prefer `anyhow::Result` in app code and `?` propagation; avoid unwrap/expect unless proven safe.
+- Add doc comments for public items.

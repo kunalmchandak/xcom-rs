@@ -1,0 +1,4 @@
+- Purpose: Rust CLI application `xcom-rs`.
+- Stack: Rust 2021, clap, anyhow, serde/serde_json/serde_yaml, tracing, uuid.
+- Structure: `src/main.rs` entrypoint, library/modules under `src/`, tests in `tests/` and unit tests in source files.
+- Build system: Cargo with Makefile wrappers.
