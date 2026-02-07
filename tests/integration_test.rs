@@ -76,12 +76,12 @@ fn test_demo_interactive_non_interactive_mode() {
     // Verify error structure
     assert_eq!(json["ok"], false, "ok should be false");
     assert_eq!(
-        json["error"]["code"], "INTERACTION_REQUIRED",
-        "Should return INTERACTION_REQUIRED error"
+        json["error"]["code"], "interaction_required",
+        "Should return interaction_required error"
     );
     assert_eq!(
         json["error"]["isRetryable"], false,
-        "INTERACTION_REQUIRED should not be retryable"
+        "interaction_required should not be retryable"
     );
 
     // Verify nextSteps in details

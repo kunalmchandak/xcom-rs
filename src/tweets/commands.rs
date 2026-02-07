@@ -202,20 +202,19 @@ impl TweetCommand {
             .client_request_id
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        // Compute request hash for duplicate detection
+        // Compute request hash for storing (but not for lookup key)
         let request_hash = IdempotencyLedger::compute_request_hash(&args.text);
 
-        // Check ledger for existing operation
-        // The lookup will only return an entry if both client_request_id AND request_hash match
+        // Check ledger for existing operation by client_request_id only
         if let Some(entry) = self
             .ledger
-            .lookup(&client_request_id, &request_hash)
+            .lookup(&client_request_id)
             .context("Failed to lookup operation in ledger")?
         {
-            // Found existing operation with matching parameters
+            // Found existing operation with this client_request_id
             match args.if_exists {
                 IfExistsPolicy::Return => {
-                    // Return cached result
+                    // Return cached result (even if parameters differ)
                     let mut tweet = Tweet::new(entry.tweet_id.clone());
                     tweet.text = Some(args.text.clone());
 
@@ -227,6 +226,7 @@ impl TweetCommand {
                     return Ok(CreateResult { tweet, meta });
                 }
                 IfExistsPolicy::Error => {
+                    // Return error for duplicate client_request_id
                     return Err(IdempotencyConflictError {
                         client_request_id: client_request_id.clone(),
                     }

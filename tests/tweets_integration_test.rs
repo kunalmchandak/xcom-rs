@@ -39,7 +39,7 @@ fn test_timeout_retry_with_ledger() {
     assert_eq!(result2.meta.client_request_id, client_request_id);
 }
 
-/// Test that different request content with same client_request_id creates new operation
+/// Test that same client_request_id returns cached result regardless of content
 #[test]
 fn test_different_content_same_client_request_id() {
     let temp_dir = TempDir::new().unwrap();
@@ -59,7 +59,7 @@ fn test_different_content_same_client_request_id() {
     let tweet_id1 = result1.tweet.id.clone();
 
     // Second request with DIFFERENT text but SAME client_request_id
-    // This should NOT return cached result because request hash differs
+    // Should return cached result because client_request_id matches (idempotency key)
     let args2 = CreateArgs {
         text: "Second message".to_string(),
         client_request_id: Some(client_request_id.to_string()),
@@ -68,9 +68,9 @@ fn test_different_content_same_client_request_id() {
     let result2 = cmd.create(args2).unwrap();
     let tweet_id2 = result2.tweet.id.clone();
 
-    // Should create new tweet because content is different
-    assert_ne!(tweet_id1, tweet_id2);
-    assert_eq!(result2.meta.from_cache, None);
+    // Should return same tweet_id from cache
+    assert_eq!(tweet_id1, tweet_id2);
+    assert_eq!(result2.meta.from_cache, Some(true));
 }
 
 /// Test error policy when duplicate detected

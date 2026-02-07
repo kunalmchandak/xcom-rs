@@ -91,12 +91,9 @@ impl IdempotencyLedger {
     }
 
     /// Look up an existing operation by client_request_id
-    /// Returns the entry only if the request_hash matches (prevents replay with different parameters)
-    pub fn lookup(
-        &self,
-        client_request_id: &str,
-        request_hash: &str,
-    ) -> Result<Option<LedgerEntry>> {
+    /// Returns the entry if client_request_id exists, regardless of request_hash
+    /// The caller is responsible for handling hash mismatches if needed
+    pub fn lookup(&self, client_request_id: &str) -> Result<Option<LedgerEntry>> {
         let mut stmt = self.conn.prepare(
             "SELECT client_request_id, request_hash, tweet_id, status, created_at
              FROM tweet_operations
@@ -115,9 +112,7 @@ impl IdempotencyLedger {
             })
             .optional()?;
 
-        // Only return the entry if the request_hash matches
-        // This prevents replay attacks with different parameters
-        Ok(entry.filter(|e| e.request_hash == request_hash))
+        Ok(entry)
     }
 
     /// Clean up old entries (garbage collection)
@@ -163,10 +158,7 @@ mod tests {
             .unwrap();
 
         // Lookup should find it
-        let entry = ledger
-            .lookup(client_request_id, &request_hash)
-            .unwrap()
-            .unwrap();
+        let entry = ledger.lookup(client_request_id).unwrap().unwrap();
         assert_eq!(entry.client_request_id, client_request_id);
         assert_eq!(entry.tweet_id, tweet_id);
         assert_eq!(entry.status, "success");
@@ -176,7 +168,7 @@ mod tests {
     fn test_lookup_nonexistent() {
         let (ledger, _temp) = create_test_ledger();
 
-        let result = ledger.lookup("nonexistent", "hash").unwrap();
+        let result = ledger.lookup("nonexistent").unwrap();
         assert!(result.is_none());
     }
 
@@ -204,7 +196,7 @@ mod tests {
         assert_eq!(deleted, 0);
 
         // Entry should still exist
-        let entry = ledger.lookup("test-1", "hash-1").unwrap();
+        let entry = ledger.lookup("test-1").unwrap();
         assert!(entry.is_some());
     }
 }

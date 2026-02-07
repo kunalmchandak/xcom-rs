@@ -13,3 +13,9 @@
 - [x] `client_request_id` を単独キーとして重複判定するように台帳設計とcreateフローを修正する（現状 `src/tweets/ledger.rs` のPRIMARY KEYが `(client_request_id, request_hash)` のため、同一IDで別ペイロードを新規作成できてしまう）。
 - [x] 投稿系エラーで `error.isRetryable` と必要時 `error.retryAfterMs` を実際のCLIエラーフローで返すように統合する（`src/tweets/commands.rs` の `ClassifiedError` は現状テスト内でしか使われていない）。
 - [x] `tweets list --limit --cursor` の結果に `meta.pagination` を含め、`--cursor` 入力を実処理に反映する（現状 `src/tweets/commands.rs::TweetCommand::list` は `args.cursor` 未使用で `data.next_cursor` のみ返す）。
+
+## Acceptance #2 Failure Follow-up
+
+- [x] 同一 `client_request_id` の既存判定をペイロード差分に依存させないよう修正する（`src/tweets/commands.rs::TweetCommand::create` の `ledger.lookup(&client_request_id, &request_hash)` と `src/tweets/ledger.rs::IdempotencyLedger::lookup` のハッシュ一致フィルタにより、`client_request_id` が既存でも別テキストで新規投稿される）。
+- [x] `tweets create --if-exists error` のエラーコードを仕様値 `idempotency_conflict` に一致させる（現状は `src/protocol.rs::ErrorCode` の `#[serde(rename_all = "SCREAMING_SNAKE_CASE")]` により `IDEMPOTENCY_CONFLICT` が返る）。
+- [x] 投稿系の再試行分類を実フローで発火可能に統合し、仕様どおり `error.code=rate_limited` と `error.retryAfterMs` を返せるようにする（`ClassifiedError::from_status_code/timeout` の生成が `src/tweets/commands.rs` のテスト内のみで、CLI経路では実際に生成されない）。
