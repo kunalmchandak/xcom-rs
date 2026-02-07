@@ -74,6 +74,9 @@ pub enum Commands {
         #[command(subcommand)]
         command: BillingCommands,
     },
+
+    /// Diagnostic information about configuration and runtime state
+    Doctor,
 }
 
 #[derive(Subcommand, Debug)]
