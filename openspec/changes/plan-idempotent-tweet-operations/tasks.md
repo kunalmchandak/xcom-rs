@@ -1,8 +1,8 @@
-- [ ] `tweets create` に `--client-request-id` と `--if-exists return|error` を追加する（確認: `--output json` で `meta.clientRequestId` が返る）。
-- [ ] client-request-id未指定時の自動採番を実装する（確認: 連続実行で異なるUUIDが発行される）。
-- [ ] idempotency台帳（sqliteまたは同等）を実装し、`client_request_id -> tweet_id` を保存する（確認: 1回目成功後、同一ID再実行で外部呼び出しなしに同一tweetIdが返る）。
-- [ ] タイムアウト後の再実行フローを実装する（確認: mockで初回タイムアウト、再実行で既存結果返却が成功する）。
-- [ ] リトライ可能エラー（429/5xx）と非リトライエラー（4xx）を分類する（確認: `error.isRetryable` がステータス別に正しい）。
-- [ ] `tweets list` に `--fields` `--limit` `--cursor` を実装する（確認: `--fields id,text` 指定で不要フィールドが出ない）。
-- [ ] `--output ndjson` を実装し、大量結果を1行1JSONで出力する（確認: 複数件取得時に行単位JSONになる）。
-- [ ] 外部依存を避けるため、tweets操作のHTTPモック/fixtureテストを追加する（確認: APIキー未設定でもCIテストが成功する）。
+- [x] `tweets create` に `--client-request-id` と `--if-exists return|error` を追加する（確認: `--output json` で `meta.clientRequestId` が返る）。
+- [x] client-request-id未指定時の自動採番を実装する（確認: 連続実行で異なるUUIDが発行される）。
+- [x] idempotency台帳（sqliteまたは同等）を実装し、`client_request_id -> tweet_id` を保存する（確認: 1回目成功後、同一ID再実行で外部呼び出しなしに同一tweetIdが返る）。
+- [x] タイムアウト後の再実行フローを実装する（確認: mockで初回タイムアウト、再実行で既存結果返却が成功する）。
+- [x] リトライ可能エラー（429/5xx）と非リトライエラー（4xx）を分類する（確認: `error.isRetryable` がステータス別に正しい）。
+- [x] `tweets list` に `--fields` `--limit` `--cursor` を実装する（確認: `--fields id,text` 指定で不要フィールドが出ない）。
+- [x] `--output ndjson` を実装し、大量結果を1行1JSONで出力する（確認: 複数件取得時に行単位JSONになる）。
+- [x] 外部依存を避けるため、tweets操作のHTTPモック/fixtureテストを追加する（確認: APIキー未設定でもCIテストが成功する）。

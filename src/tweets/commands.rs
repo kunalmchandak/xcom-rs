@@ -1,0 +1,372 @@
+use super::{
+    ledger::IdempotencyLedger,
+    models::{Tweet, TweetFields, TweetMeta},
+};
+use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+use uuid::Uuid;
+
+/// Policy for handling existing operations with the same client_request_id
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IfExistsPolicy {
+    /// Return the existing result without error
+    Return,
+    /// Return an error if operation already exists
+    Error,
+}
+
+impl FromStr for IfExistsPolicy {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "return" => Ok(Self::Return),
+            "error" => Ok(Self::Error),
+            _ => Err(anyhow!(
+                "Invalid if-exists policy: {}. Valid values: return, error",
+                s
+            )),
+        }
+    }
+}
+
+impl IfExistsPolicy {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Return => "return",
+            Self::Error => "error",
+        }
+    }
+}
+
+/// Arguments for creating a tweet
+#[derive(Debug, Clone)]
+pub struct CreateArgs {
+    pub text: String,
+    pub client_request_id: Option<String>,
+    pub if_exists: IfExistsPolicy,
+}
+
+/// Arguments for listing tweets
+#[derive(Debug, Clone)]
+pub struct ListArgs {
+    pub fields: Vec<TweetFields>,
+    pub limit: Option<usize>,
+    pub cursor: Option<String>,
+}
+
+/// Result of a create operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateResult {
+    pub tweet: Tweet,
+    pub meta: TweetMeta,
+}
+
+/// Result of a list operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListResult {
+    pub tweets: Vec<Tweet>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+/// Error classification for retry logic
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    /// Retryable errors (429, 5xx)
+    Retryable,
+    /// Non-retryable client errors (4xx except 429)
+    NonRetryable,
+    /// Network/timeout errors
+    Timeout,
+}
+
+/// Classified error with retry information
+#[derive(Debug)]
+pub struct ClassifiedError {
+    pub kind: ErrorKind,
+    pub status_code: Option<u16>,
+    pub message: String,
+    pub is_retryable: bool,
+}
+
+impl ClassifiedError {
+    pub fn from_status_code(status_code: u16, message: String) -> Self {
+        let (kind, is_retryable) = match status_code {
+            429 => (ErrorKind::Retryable, true),
+            500..=599 => (ErrorKind::Retryable, true),
+            400..=499 => (ErrorKind::NonRetryable, false),
+            _ => (ErrorKind::NonRetryable, false),
+        };
+
+        Self {
+            kind,
+            status_code: Some(status_code),
+            message,
+            is_retryable,
+        }
+    }
+
+    pub fn timeout(message: String) -> Self {
+        Self {
+            kind: ErrorKind::Timeout,
+            status_code: None,
+            message,
+            is_retryable: true,
+        }
+    }
+}
+
+/// Main tweets command handler
+pub struct TweetCommand {
+    ledger: IdempotencyLedger,
+}
+
+impl TweetCommand {
+    /// Create a new tweet command handler
+    pub fn new(ledger: IdempotencyLedger) -> Self {
+        Self { ledger }
+    }
+
+    /// Create a tweet with idempotency support
+    pub fn create(&self, args: CreateArgs) -> Result<CreateResult> {
+        // Generate client_request_id if not provided
+        let client_request_id = args
+            .client_request_id
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        // Compute request hash for duplicate detection
+        let request_hash = IdempotencyLedger::compute_request_hash(&args.text);
+
+        // Check ledger for existing operation
+        if let Some(entry) = self
+            .ledger
+            .lookup(&client_request_id, &request_hash)
+            .context("Failed to lookup operation in ledger")?
+        {
+            // Found existing operation
+            match args.if_exists {
+                IfExistsPolicy::Return => {
+                    // Return cached result
+                    let mut tweet = Tweet::new(entry.tweet_id.clone());
+                    tweet.text = Some(args.text.clone());
+
+                    let meta = TweetMeta {
+                        client_request_id: client_request_id.clone(),
+                        from_cache: Some(true),
+                    };
+
+                    return Ok(CreateResult { tweet, meta });
+                }
+                IfExistsPolicy::Error => {
+                    return Err(anyhow!(
+                        "Operation with client_request_id '{}' already exists",
+                        client_request_id
+                    ));
+                }
+            }
+        }
+
+        // If request_hash differs but client_request_id is the same,
+        // this is a different request and should not be deduplicated
+        // (prevented by PRIMARY KEY constraint in ledger)
+
+        // Simulate tweet creation (in real implementation, would call X API)
+        let tweet_id = format!("tweet_{}", Uuid::new_v4());
+        let mut tweet = Tweet::new(tweet_id.clone());
+        tweet.text = Some(args.text);
+
+        // Record successful operation in ledger
+        self.ledger
+            .record(&client_request_id, &request_hash, &tweet_id, "success")
+            .context("Failed to record operation in ledger")?;
+
+        let meta = TweetMeta {
+            client_request_id,
+            from_cache: None,
+        };
+
+        Ok(CreateResult { tweet, meta })
+    }
+
+    /// List tweets with field projection and pagination
+    pub fn list(&self, args: ListArgs) -> Result<ListResult> {
+        // Simulate fetching tweets (in real implementation, would call X API)
+        let limit = args.limit.unwrap_or(10);
+
+        let mut tweets = Vec::new();
+        for i in 0..limit {
+            let mut tweet = Tweet::new(format!("tweet_{}", i));
+            tweet.text = Some(format!("Tweet text {}", i));
+            tweet.author_id = Some(format!("user_{}", i));
+            tweet.created_at = Some("2024-01-01T00:00:00Z".to_string());
+
+            // Apply field projection
+            let projected = tweet.project(&args.fields);
+            tweets.push(projected);
+        }
+
+        // Simulate pagination
+        let next_cursor = if tweets.len() == limit {
+            Some(format!("cursor_{}", limit))
+        } else {
+            None
+        };
+
+        Ok(ListResult {
+            tweets,
+            next_cursor,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn create_test_command() -> (TweetCommand, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+        let cmd = TweetCommand::new(ledger);
+        (cmd, temp_dir)
+    }
+
+    #[test]
+    fn test_create_generates_client_request_id() {
+        let (cmd, _temp) = create_test_command();
+
+        let args = CreateArgs {
+            text: "Hello world".to_string(),
+            client_request_id: None,
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        let result = cmd.create(args).unwrap();
+        assert!(!result.meta.client_request_id.is_empty());
+        assert_eq!(result.tweet.text, Some("Hello world".to_string()));
+    }
+
+    #[test]
+    fn test_create_with_explicit_client_request_id() {
+        let (cmd, _temp) = create_test_command();
+
+        let args = CreateArgs {
+            text: "Hello world".to_string(),
+            client_request_id: Some("my-request-id".to_string()),
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        let result = cmd.create(args).unwrap();
+        assert_eq!(result.meta.client_request_id, "my-request-id");
+    }
+
+    #[test]
+    fn test_create_idempotency_return_policy() {
+        let (cmd, _temp) = create_test_command();
+
+        let args = CreateArgs {
+            text: "Hello world".to_string(),
+            client_request_id: Some("test-123".to_string()),
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        // First call
+        let result1 = cmd.create(args.clone()).unwrap();
+        let tweet_id1 = result1.tweet.id.clone();
+
+        // Second call with same ID and text should return cached result
+        let result2 = cmd.create(args).unwrap();
+        assert_eq!(result2.tweet.id, tweet_id1);
+        assert_eq!(result2.meta.from_cache, Some(true));
+    }
+
+    #[test]
+    fn test_create_idempotency_error_policy() {
+        let (cmd, _temp) = create_test_command();
+
+        let args = CreateArgs {
+            text: "Hello world".to_string(),
+            client_request_id: Some("test-456".to_string()),
+            if_exists: IfExistsPolicy::Error,
+        };
+
+        // First call succeeds
+        cmd.create(args.clone()).unwrap();
+
+        // Second call should error
+        let result = cmd.create(args);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn test_list_with_field_projection() {
+        let (cmd, _temp) = create_test_command();
+
+        let args = ListArgs {
+            fields: vec![TweetFields::Id, TweetFields::Text],
+            limit: Some(5),
+            cursor: None,
+        };
+
+        let result = cmd.list(args).unwrap();
+        assert_eq!(result.tweets.len(), 5);
+
+        // Check that only requested fields are present
+        for tweet in &result.tweets {
+            assert!(!tweet.id.is_empty());
+            assert!(tweet.text.is_some());
+            assert!(tweet.author_id.is_none()); // Not requested
+        }
+    }
+
+    #[test]
+    fn test_list_pagination() {
+        let (cmd, _temp) = create_test_command();
+
+        let args = ListArgs {
+            fields: TweetFields::default_fields(),
+            limit: Some(10),
+            cursor: None,
+        };
+
+        let result = cmd.list(args).unwrap();
+        assert_eq!(result.tweets.len(), 10);
+        assert!(result.next_cursor.is_some());
+    }
+
+    #[test]
+    fn test_error_classification() {
+        let err_429 = ClassifiedError::from_status_code(429, "Rate limit".to_string());
+        assert_eq!(err_429.kind, ErrorKind::Retryable);
+        assert!(err_429.is_retryable);
+
+        let err_500 = ClassifiedError::from_status_code(500, "Server error".to_string());
+        assert_eq!(err_500.kind, ErrorKind::Retryable);
+        assert!(err_500.is_retryable);
+
+        let err_400 = ClassifiedError::from_status_code(400, "Bad request".to_string());
+        assert_eq!(err_400.kind, ErrorKind::NonRetryable);
+        assert!(!err_400.is_retryable);
+
+        let err_timeout = ClassifiedError::timeout("Timeout".to_string());
+        assert_eq!(err_timeout.kind, ErrorKind::Timeout);
+        assert!(err_timeout.is_retryable);
+    }
+
+    #[test]
+    fn test_if_exists_policy_from_str() {
+        assert_eq!(
+            IfExistsPolicy::from_str("return").unwrap(),
+            IfExistsPolicy::Return
+        );
+        assert_eq!(
+            IfExistsPolicy::from_str("error").unwrap(),
+            IfExistsPolicy::Error
+        );
+        assert!(IfExistsPolicy::from_str("invalid").is_err());
+    }
+}

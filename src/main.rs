@@ -1,12 +1,13 @@
 use clap::Parser;
 use std::str::FromStr;
 use xcom_rs::{
-    cli::{Cli, Commands},
+    cli::{Cli, Commands, TweetsCommands},
     context::ExecutionContext,
     introspection::{CommandHelp, CommandSchema, CommandsList},
     logging::{init_logging, LogFormat},
-    output::{print_envelope, OutputFormat},
+    output::{print_envelope, print_ndjson, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
+    tweets::{CreateArgs, IdempotencyLedger, IfExistsPolicy, ListArgs, TweetCommand, TweetFields},
 };
 
 fn main() {
@@ -157,6 +158,104 @@ fn main() {
                 Envelope::success("demo-interactive", result)
             };
             print_envelope(&envelope, output_format)
+        }
+        Commands::Tweets { command } => {
+            // Initialize idempotency ledger
+            let ledger =
+                IdempotencyLedger::new(None).expect("Failed to initialize idempotency ledger");
+            let tweet_cmd = TweetCommand::new(ledger);
+
+            match command {
+                TweetsCommands::Create {
+                    text,
+                    client_request_id,
+                    if_exists,
+                } => {
+                    tracing::info!(text = %text, "Creating tweet");
+
+                    let if_exists_policy =
+                        IfExistsPolicy::from_str(&if_exists).unwrap_or_else(|e| {
+                            eprintln!("Invalid if-exists policy: {}", e);
+                            std::process::exit(ExitCode::InvalidArgument.into());
+                        });
+
+                    let args = CreateArgs {
+                        text,
+                        client_request_id,
+                        if_exists: if_exists_policy,
+                    };
+
+                    match tweet_cmd.create(args) {
+                        Ok(result) => {
+                            let envelope = if let Some(meta) = create_meta() {
+                                Envelope::success_with_meta("tweets.create", result, meta)
+                            } else {
+                                Envelope::success("tweets.create", result)
+                            };
+                            print_envelope(&envelope, output_format)
+                        }
+                        Err(e) => {
+                            let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
+                            let envelope = if let Some(meta) = create_meta() {
+                                Envelope::<()>::error_with_meta("error", error, meta)
+                            } else {
+                                Envelope::<()>::error("error", error)
+                            };
+                            let _ = print_envelope(&envelope, output_format);
+                            std::process::exit(ExitCode::OperationFailed.into());
+                        }
+                    }
+                }
+                TweetsCommands::List {
+                    fields,
+                    limit,
+                    cursor,
+                } => {
+                    tracing::info!("Listing tweets");
+
+                    // Parse fields or use defaults
+                    let field_list = if let Some(fields_str) = fields {
+                        fields_str
+                            .split(',')
+                            .filter_map(|s| TweetFields::parse(s.trim()))
+                            .collect()
+                    } else {
+                        TweetFields::default_fields()
+                    };
+
+                    let args = ListArgs {
+                        fields: field_list,
+                        limit,
+                        cursor,
+                    };
+
+                    match tweet_cmd.list(args) {
+                        Ok(result) => {
+                            // For NDJSON format, print tweets line-by-line
+                            if output_format == OutputFormat::Ndjson {
+                                print_ndjson(&result.tweets)
+                            } else {
+                                let envelope = if let Some(meta) = create_meta() {
+                                    Envelope::success_with_meta("tweets.list", result, meta)
+                                } else {
+                                    Envelope::success("tweets.list", result)
+                                };
+                                print_envelope(&envelope, output_format)
+                            }
+                        }
+                        Err(e) => {
+                            let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
+                            let envelope = if let Some(meta) = create_meta() {
+                                Envelope::<()>::error_with_meta("error", error, meta)
+                            } else {
+                                Envelope::<()>::error("error", error)
+                            };
+                            let _ = print_envelope(&envelope, output_format);
+                            std::process::exit(ExitCode::OperationFailed.into());
+                        }
+                    }
+                }
+            }
         }
     };
 
