@@ -334,6 +334,177 @@ fn test_dry_run_zero_cost() {
 }
 
 #[test]
+fn test_auth_import_dry_run_create() {
+    // Test dry-run mode for creating new auth (no existing auth)
+    let test_dir =
+        std::env::temp_dir().join(format!("xcom-rs-dry-run-test-{}", std::process::id()));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+
+    let test_token_data = "STUB_B64_{\"accessToken\":\"test_token_123\",\"tokenType\":\"Bearer\",\"expiresAt\":null,\"scopes\":[\"read\",\"write\"]}";
+    let output = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "auth",
+            "import",
+            "--dry-run",
+            test_token_data,
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute auth import dry-run");
+
+    assert!(
+        output.status.success(),
+        "Auth import dry-run should succeed"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+
+    // Verify dry-run response
+    assert_eq!(json["ok"], true, "ok should be true");
+    assert_eq!(json["data"]["action"], "create", "action should be create");
+    assert_eq!(json["data"]["dryRun"], true, "dryRun should be true");
+
+    // Verify no file was created
+    let auth_file = test_dir.join(".config/xcom-rs/auth.json");
+    assert!(
+        !auth_file.exists(),
+        "Auth file should not be created in dry-run mode"
+    );
+
+    // Cleanup
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+#[test]
+fn test_auth_import_dry_run_update() {
+    // Test dry-run mode for updating existing auth
+    let test_dir = std::env::temp_dir().join(format!(
+        "xcom-rs-dry-run-update-test-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+
+    // First, import some auth data without dry-run
+    let test_token_data1 = "STUB_B64_{\"accessToken\":\"old_token\",\"tokenType\":\"Bearer\",\"expiresAt\":null,\"scopes\":[\"read\"]}";
+    let import_output = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "auth",
+            "import",
+            test_token_data1,
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute initial auth import");
+
+    assert!(
+        import_output.status.success(),
+        "Initial import should succeed"
+    );
+
+    // Now test dry-run with new data
+    let test_token_data2 = "STUB_B64_{\"accessToken\":\"new_token\",\"tokenType\":\"Bearer\",\"expiresAt\":null,\"scopes\":[\"write\"]}";
+    let dry_run_output = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "auth",
+            "import",
+            "--dry-run",
+            test_token_data2,
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute auth import dry-run");
+
+    assert!(
+        dry_run_output.status.success(),
+        "Auth import dry-run should succeed"
+    );
+
+    let stdout = String::from_utf8_lossy(&dry_run_output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+
+    // Verify dry-run response
+    assert_eq!(json["ok"], true, "ok should be true");
+    assert_eq!(json["data"]["action"], "update", "action should be update");
+    assert_eq!(json["data"]["dryRun"], true, "dryRun should be true");
+
+    // Verify the old auth data is still there (not updated)
+    let auth_file = test_dir.join(".config/xcom-rs/auth.json");
+    let auth_content = std::fs::read_to_string(&auth_file).expect("Auth file should exist");
+    assert!(
+        auth_content.contains("old_token"),
+        "Old token should still be in file"
+    );
+    assert!(
+        !auth_content.contains("new_token"),
+        "New token should not be in file"
+    );
+
+    // Cleanup
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+#[test]
+fn test_auth_import_dry_run_fail() {
+    // Test dry-run mode with invalid data
+    let test_dir =
+        std::env::temp_dir().join(format!("xcom-rs-dry-run-fail-test-{}", std::process::id()));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+
+    let output = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "auth",
+            "import",
+            "--dry-run",
+            "invalid_data",
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute auth import dry-run");
+
+    assert!(
+        !output.status.success(),
+        "Auth import dry-run should fail with invalid data"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+
+    // Verify error response
+    assert_eq!(json["ok"], false, "ok should be false");
+    assert_eq!(
+        json["error"]["code"], "INVALID_ARGUMENT",
+        "error code should be INVALID_ARGUMENT"
+    );
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid"),
+        "error message should mention invalid data"
+    );
+
+    // Cleanup
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+#[test]
 fn test_all_tests_run_without_network() {
     // Task 8: Verify all tests pass without network access
     // This test itself verifies that by running successfully
