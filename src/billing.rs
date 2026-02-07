@@ -35,6 +35,18 @@ pub struct BillingEstimate {
     pub cost: CostEstimate,
 }
 
+/// Compare two JSON strings for equality by parsing and re-serializing
+/// This handles key ordering differences
+fn json_content_equal(json1: &str, json2: &str) -> bool {
+    match (
+        serde_json::from_str::<serde_json::Value>(json1),
+        serde_json::from_str::<serde_json::Value>(json2),
+    ) {
+        (Ok(v1), Ok(v2)) => v1 == v2,
+        _ => false, // If parsing fails, treat as different
+    }
+}
+
 /// Daily budget tracker
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BudgetTracker {
@@ -74,14 +86,18 @@ impl BudgetTracker {
         Ok(tracker)
     }
 
-    /// Get default storage path: ~/.config/xcom-rs/budget.json
+    /// Get default storage path: respects XDG_DATA_HOME, falls back to ~/.config/xcom-rs/budget.json
     pub fn default_storage_path() -> Result<PathBuf> {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
-        let config_dir = PathBuf::from(home).join(".config").join("xcom-rs");
-        std::fs::create_dir_all(&config_dir)?;
-        Ok(config_dir.join("budget.json"))
+        let data_dir = if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
+            PathBuf::from(xdg_data).join("xcom-rs")
+        } else {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
+            PathBuf::from(home).join(".config").join("xcom-rs")
+        };
+        std::fs::create_dir_all(&data_dir)?;
+        Ok(data_dir.join("budget.json"))
     }
 
     /// Create a budget tracker with default storage location
@@ -90,10 +106,27 @@ impl BudgetTracker {
     }
 
     /// Save the current usage to persistent storage
+    /// Only writes if the content has changed (prevents unnecessary file modifications)
     fn save_to_storage(&self) -> Result<()> {
         if let Some(path) = &self.storage_path {
-            let json = serde_json::to_string_pretty(self)?;
-            std::fs::write(path, json)?;
+            let new_json = serde_json::to_string_pretty(self)?;
+
+            // Check if file exists and compare content
+            let should_write = if path.exists() {
+                match std::fs::read_to_string(path) {
+                    Ok(existing_json) => {
+                        // Compare normalized JSON to handle key ordering differences
+                        !json_content_equal(&existing_json, &new_json)
+                    }
+                    Err(_) => true, // If we can't read, write anyway
+                }
+            } else {
+                true // File doesn't exist, write it
+            };
+
+            if should_write {
+                std::fs::write(path, new_json)?;
+            }
         }
         Ok(())
     }
@@ -256,5 +289,142 @@ mod tests {
         assert_eq!(tracker.today_usage(), 70);
         assert!(tracker.check_budget(30).is_ok());
         assert!(tracker.check_budget(31).is_err());
+    }
+
+    #[test]
+    fn test_stable_writes_no_modification_on_same_content() {
+        use std::fs;
+
+        // Create a temporary directory for testing
+        let temp_dir = std::env::temp_dir().join(format!("xcom-rs-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let storage_path = temp_dir.join("budget.json");
+
+        // Create a tracker with storage
+        let mut tracker = BudgetTracker::with_storage(Some(100), storage_path.clone()).unwrap();
+
+        // Record some usage
+        tracker.record_usage(30);
+
+        // Get the initial modification time
+        let metadata1 = fs::metadata(&storage_path).unwrap();
+        let mtime1 = metadata1.modified().unwrap();
+
+        // Wait a small amount to ensure timestamps would differ if file was rewritten
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Save again without changing content (by loading and immediately saving)
+        let tracker2 = BudgetTracker::with_storage(Some(100), storage_path.clone()).unwrap();
+        // The loaded tracker has the same usage, so saving should not modify the file
+        drop(tracker2); // This won't save since we didn't call record_usage
+
+        // Instead, let's create a new tracker with the same state and force a save
+        let mut tracker3 = BudgetTracker::with_storage(Some(100), storage_path.clone()).unwrap();
+        // Record 0 usage to trigger save without changing content
+        tracker3.record_usage(0);
+
+        // Get the modification time again
+        let metadata2 = fs::metadata(&storage_path).unwrap();
+        let mtime2 = metadata2.modified().unwrap();
+
+        // The modification time should be the same (file was not rewritten)
+        assert_eq!(
+            mtime1, mtime2,
+            "File modification time changed despite identical content"
+        );
+
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_stable_writes_modification_on_different_content() {
+        use std::fs;
+
+        // Create a temporary directory for testing
+        let temp_dir = std::env::temp_dir().join(format!("xcom-rs-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let storage_path = temp_dir.join("budget.json");
+
+        // Create a tracker with storage
+        let mut tracker = BudgetTracker::with_storage(Some(100), storage_path.clone()).unwrap();
+
+        // Record some usage
+        tracker.record_usage(30);
+
+        // Get the initial modification time
+        let metadata1 = fs::metadata(&storage_path).unwrap();
+        let mtime1 = metadata1.modified().unwrap();
+
+        // Wait a small amount to ensure timestamps would differ
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Record different usage (should rewrite)
+        tracker.record_usage(20);
+
+        // Get the modification time again
+        let metadata2 = fs::metadata(&storage_path).unwrap();
+        let mtime2 = metadata2.modified().unwrap();
+
+        // The modification time should be different (file was rewritten)
+        assert!(
+            mtime1 < mtime2,
+            "File modification time did not change despite different content"
+        );
+
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_default_storage_path_with_xdg_data_home() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        // Save current value
+        let original = std::env::var("XDG_DATA_HOME").ok();
+
+        // Set XDG_DATA_HOME
+        std::env::set_var("XDG_DATA_HOME", "/tmp/test-xdg-data");
+
+        let path = BudgetTracker::default_storage_path();
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XDG_DATA_HOME", val),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path
+            .to_string_lossy()
+            .contains("/tmp/test-xdg-data/xcom-rs/budget.json"));
+    }
+
+    #[test]
+    fn test_default_storage_path_without_xdg() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        // Save current value
+        let original = std::env::var("XDG_DATA_HOME").ok();
+
+        // Ensure XDG_DATA_HOME is not set
+        std::env::remove_var("XDG_DATA_HOME");
+
+        let path = BudgetTracker::default_storage_path();
+
+        // Restore original value
+        if let Some(val) = original {
+            std::env::set_var("XDG_DATA_HOME", val);
+        }
+
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        // Should fall back to ~/.config/xcom-rs/budget.json
+        assert!(path
+            .to_string_lossy()
+            .contains(".config/xcom-rs/budget.json"));
     }
 }

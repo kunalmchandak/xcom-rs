@@ -137,8 +137,8 @@ fn test_non_interactive_auth_error() {
     // Verify error structure from task 3
     assert_eq!(json["ok"], false, "ok should be false");
     assert_eq!(
-        json["error"]["code"], "AUTH_REQUIRED",
-        "error.code should be AUTH_REQUIRED"
+        json["error"]["code"], "auth_required",
+        "error.code should be auth_required"
     );
     assert!(
         json["error"]["details"]["nextSteps"].is_array(),
@@ -214,8 +214,8 @@ fn test_max_cost_credits_guard() {
     // Verify error structure from task 5
     assert_eq!(json["ok"], false, "ok should be false");
     assert_eq!(
-        json["error"]["code"], "COST_LIMIT_EXCEEDED",
-        "error.code should be COST_LIMIT_EXCEEDED"
+        json["error"]["code"], "cost_limit_exceeded",
+        "error.code should be cost_limit_exceeded"
     );
 }
 
@@ -286,7 +286,7 @@ fn test_budget_daily_credits_tracking() {
     let json2: serde_json::Value =
         serde_json::from_str(&stdout2).expect("Should return valid JSON");
     assert_eq!(json2["ok"], false);
-    assert_eq!(json2["error"]["code"], "DAILY_BUDGET_EXCEEDED");
+    assert_eq!(json2["error"]["code"], "daily_budget_exceeded");
 
     // Cleanup
     std::fs::remove_dir_all(&test_dir).ok();
@@ -575,7 +575,81 @@ fn test_auth_import_dry_run_fail() {
 #[test]
 fn test_all_tests_run_without_network() {
     // Task 8: Verify all tests pass without network access
-    // This test itself verifies that by running successfully
-    // All the above tests use stub/fixture data and don't make real API calls
-    assert!(true, "If this test runs, network is not required");
+    // All tests in this file use local fixtures and command stubs without external API calls.
 }
+
+#[test]
+fn test_auth_storage_stable_writes() {
+    // Test for stabilize-storage-writes: Verify that saving the same content twice
+    // doesn't modify the file timestamp
+    let test_dir = std::env::temp_dir().join(format!("xcom-rs-stable-test-{}", std::process::id()));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+
+    // Import auth data
+    let test_token_data = "STUB_B64_{\"accessToken\":\"test_token_123\",\"tokenType\":\"Bearer\",\"expiresAt\":null,\"scopes\":[\"read\",\"write\"]}";
+    let import_output = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "auth",
+            "import",
+            test_token_data,
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute auth import");
+
+    assert!(import_output.status.success(), "Auth import should succeed");
+
+    // Get the file path and its first modification time
+    let auth_file = test_dir.join(".config/xcom-rs/auth.json");
+    assert!(auth_file.exists(), "Auth file should exist after import");
+
+    let metadata1 = std::fs::metadata(&auth_file).expect("Failed to get file metadata");
+    let mtime1 = metadata1
+        .modified()
+        .expect("Failed to get modification time");
+
+    // Wait a bit to ensure timestamp would change if file was rewritten
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Import the same data again
+    let import_output2 = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "auth",
+            "import",
+            test_token_data,
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute auth import");
+
+    assert!(
+        import_output2.status.success(),
+        "Second auth import should succeed"
+    );
+
+    // Check that modification time hasn't changed
+    let metadata2 = std::fs::metadata(&auth_file).expect("Failed to get file metadata");
+    let mtime2 = metadata2
+        .modified()
+        .expect("Failed to get modification time");
+
+    assert_eq!(
+        mtime1, mtime2,
+        "File modification time should not change when content is identical"
+    );
+
+    // Cleanup
+    std::fs::remove_dir_all(&test_dir).ok();
+}
+
+// Note: Stable writes for billing are tested in unit tests (src/billing.rs)
+// Integration test removed because dry-run mode doesn't create budget file
+// (record_usage is not called in dry-run mode, so save_to_storage is never called)

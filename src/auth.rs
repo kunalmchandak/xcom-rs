@@ -113,6 +113,18 @@ pub struct AuthToken {
     pub scopes: Vec<String>,
 }
 
+/// Compare two JSON strings for equality by parsing and re-serializing
+/// This handles key ordering differences
+fn json_content_equal(json1: &str, json2: &str) -> bool {
+    match (
+        serde_json::from_str::<serde_json::Value>(json1),
+        serde_json::from_str::<serde_json::Value>(json2),
+    ) {
+        (Ok(v1), Ok(v2)) => v1 == v2,
+        _ => false, // If parsing fails, treat as different
+    }
+}
+
 /// In-memory auth store for testing/stub implementation
 #[derive(Debug, Clone)]
 pub struct AuthStore {
@@ -148,12 +160,16 @@ impl AuthStore {
         Ok(store)
     }
 
-    /// Get default storage path: ~/.config/xcom-rs/auth.json
+    /// Get default storage path: respects XDG_CONFIG_HOME, falls back to ~/.config/xcom-rs/auth.json
     pub fn default_storage_path() -> Result<PathBuf> {
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
-        let config_dir = PathBuf::from(home).join(".config").join("xcom-rs");
+        let config_dir = if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
+            PathBuf::from(xdg_config).join("xcom-rs")
+        } else {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
+            PathBuf::from(home).join(".config").join("xcom-rs")
+        };
         std::fs::create_dir_all(&config_dir)?;
         Ok(config_dir.join("auth.json"))
     }
@@ -164,11 +180,28 @@ impl AuthStore {
     }
 
     /// Save the current token to persistent storage
+    /// Only writes if the content has changed (prevents unnecessary file modifications)
     fn save_to_storage(&self) -> Result<()> {
         if let Some(path) = &self.storage_path {
             if let Some(token) = &self.token {
-                let json = serde_json::to_string_pretty(token)?;
-                std::fs::write(path, json)?;
+                let new_json = serde_json::to_string_pretty(token)?;
+
+                // Check if file exists and compare content
+                let should_write = if path.exists() {
+                    match std::fs::read_to_string(path) {
+                        Ok(existing_json) => {
+                            // Compare normalized JSON to handle key ordering differences
+                            !json_content_equal(&existing_json, &new_json)
+                        }
+                        Err(_) => true, // If we can't read, write anyway
+                    }
+                } else {
+                    true // File doesn't exist, write it
+                };
+
+                if should_write {
+                    std::fs::write(path, new_json)?;
+                }
             } else {
                 // If no token, delete the storage file
                 if path.exists() {
@@ -506,5 +539,147 @@ mod tests {
             store.token.as_ref().unwrap().access_token,
             "test_token".to_string()
         );
+    }
+
+    #[test]
+    fn test_stable_writes_same_content() {
+        // Test that writing the same token twice doesn't modify the file
+        let test_dir =
+            std::env::temp_dir().join(format!("auth-stable-test-{}", std::process::id()));
+        std::fs::create_dir_all(&test_dir).unwrap();
+        let test_path = test_dir.join("auth.json");
+
+        let token = AuthToken {
+            access_token: "test_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        // Create store and save token
+        let mut store = AuthStore::with_storage(test_path.clone()).unwrap();
+        store.set_token(token.clone());
+
+        // Get first modification time
+        let metadata1 = std::fs::metadata(&test_path).unwrap();
+        let mtime1 = metadata1.modified().unwrap();
+
+        // Wait to ensure timestamp would change if file was rewritten
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Save the same token again
+        store.set_token(token);
+
+        // Get second modification time
+        let metadata2 = std::fs::metadata(&test_path).unwrap();
+        let mtime2 = metadata2.modified().unwrap();
+
+        // Timestamps should be identical
+        assert_eq!(
+            mtime1, mtime2,
+            "File should not be rewritten when content is identical"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&test_dir).ok();
+    }
+
+    #[test]
+    fn test_stable_writes_different_content() {
+        // Test that writing different tokens does modify the file
+        let test_dir = std::env::temp_dir().join(format!("auth-diff-test-{}", std::process::id()));
+        std::fs::create_dir_all(&test_dir).unwrap();
+        let test_path = test_dir.join("auth.json");
+
+        let token1 = AuthToken {
+            access_token: "test_token_1".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        let token2 = AuthToken {
+            access_token: "test_token_2".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        // Create store and save first token
+        let mut store = AuthStore::with_storage(test_path.clone()).unwrap();
+        store.set_token(token1);
+
+        // Get first modification time
+        let metadata1 = std::fs::metadata(&test_path).unwrap();
+        let mtime1 = metadata1.modified().unwrap();
+
+        // Wait to ensure timestamp would change
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Save a different token
+        store.set_token(token2);
+
+        // Get second modification time
+        let metadata2 = std::fs::metadata(&test_path).unwrap();
+        let mtime2 = metadata2.modified().unwrap();
+
+        // Timestamps should be different
+        assert_ne!(
+            mtime1, mtime2,
+            "File should be rewritten when content changes"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&test_dir).ok();
+    }
+
+    #[test]
+    fn test_default_storage_path_with_xdg_config_home() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        // Save current value
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+
+        // Set XDG_CONFIG_HOME
+        std::env::set_var("XDG_CONFIG_HOME", "/tmp/test-xdg-config");
+
+        let path = AuthStore::default_storage_path();
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        assert!(path
+            .to_string_lossy()
+            .contains("/tmp/test-xdg-config/xcom-rs/auth.json"));
+    }
+
+    #[test]
+    fn test_default_storage_path_without_xdg() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        // Save current value
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+
+        // Ensure XDG_CONFIG_HOME is not set
+        std::env::remove_var("XDG_CONFIG_HOME");
+
+        let path = AuthStore::default_storage_path();
+
+        // Restore original value
+        if let Some(val) = original {
+            std::env::set_var("XDG_CONFIG_HOME", val);
+        }
+
+        assert!(path.is_ok());
+        let path = path.unwrap();
+        // Should fall back to ~/.config/xcom-rs/auth.json
+        assert!(path.to_string_lossy().contains(".config/xcom-rs/auth.json"));
     }
 }

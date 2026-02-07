@@ -57,6 +57,12 @@ pub enum Commands {
     /// Demo command that requires interaction (for testing non-interactive mode)
     DemoInteractive,
 
+    /// Tweet operations
+    Tweets {
+        #[command(subcommand)]
+        command: TweetsCommands,
+    },
+
     /// Authentication commands
     Auth {
         #[command(subcommand)]
@@ -67,6 +73,38 @@ pub enum Commands {
     Billing {
         #[command(subcommand)]
         command: BillingCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TweetsCommands {
+    /// Create a new tweet
+    Create {
+        /// Tweet text content
+        text: String,
+
+        /// Client request ID for idempotency (auto-generated if not provided)
+        #[arg(long)]
+        client_request_id: Option<String>,
+
+        /// Policy when operation with same client_request_id exists
+        #[arg(long, default_value = "return")]
+        if_exists: String,
+    },
+
+    /// List tweets
+    List {
+        /// Fields to include in response (comma-separated: id,text,author_id,created_at)
+        #[arg(long)]
+        fields: Option<String>,
+
+        /// Maximum number of tweets to return
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Pagination cursor
+        #[arg(long)]
+        cursor: Option<String>,
     },
 }
 
