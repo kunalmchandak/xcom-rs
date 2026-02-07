@@ -137,8 +137,8 @@ fn test_non_interactive_auth_error() {
     // Verify error structure from task 3
     assert_eq!(json["ok"], false, "ok should be false");
     assert_eq!(
-        json["error"]["code"], "AUTH_REQUIRED",
-        "error.code should be AUTH_REQUIRED"
+        json["error"]["code"], "auth_required",
+        "error.code should be auth_required"
     );
     assert!(
         json["error"]["details"]["nextSteps"].is_array(),
@@ -214,8 +214,8 @@ fn test_max_cost_credits_guard() {
     // Verify error structure from task 5
     assert_eq!(json["ok"], false, "ok should be false");
     assert_eq!(
-        json["error"]["code"], "COST_LIMIT_EXCEEDED",
-        "error.code should be COST_LIMIT_EXCEEDED"
+        json["error"]["code"], "cost_limit_exceeded",
+        "error.code should be cost_limit_exceeded"
     );
 }
 
@@ -286,7 +286,7 @@ fn test_budget_daily_credits_tracking() {
     let json2: serde_json::Value =
         serde_json::from_str(&stdout2).expect("Should return valid JSON");
     assert_eq!(json2["ok"], false);
-    assert_eq!(json2["error"]["code"], "DAILY_BUDGET_EXCEEDED");
+    assert_eq!(json2["error"]["code"], "daily_budget_exceeded");
 
     // Cleanup
     std::fs::remove_dir_all(&test_dir).ok();
@@ -336,7 +336,5 @@ fn test_dry_run_zero_cost() {
 #[test]
 fn test_all_tests_run_without_network() {
     // Task 8: Verify all tests pass without network access
-    // This test itself verifies that by running successfully
-    // All the above tests use stub/fixture data and don't make real API calls
-    assert!(true, "If this test runs, network is not required");
+    // All tests in this file use local fixtures and command stubs without external API calls.
 }
