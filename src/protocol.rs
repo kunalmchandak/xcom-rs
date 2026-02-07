@@ -130,6 +130,7 @@ pub enum ErrorCode {
     UnknownCommand,
     AuthenticationFailed,
     AuthorizationFailed,
+    AuthRequired,
     RateLimitExceeded,
     NetworkError,
     ServiceUnavailable,
@@ -137,6 +138,7 @@ pub enum ErrorCode {
     NotFound,
     InvalidState,
     InteractionRequired,
+    CostLimitExceeded,
 }
 
 impl ErrorCode {
@@ -154,15 +156,16 @@ impl ErrorCode {
             ErrorCode::InvalidArgument | ErrorCode::MissingArgument | ErrorCode::UnknownCommand => {
                 ExitCode::InvalidArgument.into()
             }
-            ErrorCode::AuthenticationFailed | ErrorCode::AuthorizationFailed => {
-                ExitCode::AuthenticationError.into()
-            }
+            ErrorCode::AuthenticationFailed
+            | ErrorCode::AuthorizationFailed
+            | ErrorCode::AuthRequired => ExitCode::AuthenticationError.into(),
             ErrorCode::RateLimitExceeded
             | ErrorCode::NetworkError
             | ErrorCode::ServiceUnavailable
             | ErrorCode::NotFound
             | ErrorCode::InvalidState
-            | ErrorCode::InteractionRequired => ExitCode::OperationFailed.into(),
+            | ErrorCode::InteractionRequired
+            | ErrorCode::CostLimitExceeded => ExitCode::OperationFailed.into(),
             ErrorCode::InternalError => ExitCode::OperationFailed.into(),
         }
     }
@@ -189,9 +192,9 @@ impl ExitCode {
             ErrorCode::InvalidArgument | ErrorCode::MissingArgument | ErrorCode::UnknownCommand => {
                 ExitCode::InvalidArgument
             }
-            ErrorCode::AuthenticationFailed | ErrorCode::AuthorizationFailed => {
-                ExitCode::AuthenticationError
-            }
+            ErrorCode::AuthenticationFailed
+            | ErrorCode::AuthorizationFailed
+            | ErrorCode::AuthRequired => ExitCode::AuthenticationError,
             _ => ExitCode::OperationFailed,
         }
     }
@@ -234,8 +237,10 @@ mod tests {
     fn test_exit_codes() {
         assert_eq!(ErrorCode::InvalidArgument.exit_code(), 2);
         assert_eq!(ErrorCode::AuthenticationFailed.exit_code(), 3);
+        assert_eq!(ErrorCode::AuthRequired.exit_code(), 3);
         assert_eq!(ErrorCode::NetworkError.exit_code(), 4);
         assert_eq!(ErrorCode::InteractionRequired.exit_code(), 4);
+        assert_eq!(ErrorCode::CostLimitExceeded.exit_code(), 4);
     }
 
     #[test]

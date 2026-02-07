@@ -5,7 +5,7 @@ use xcom_rs::protocol::ErrorCode;
 #[test]
 fn test_non_interactive_context() {
     // Test that ExecutionContext properly handles non-interactive mode
-    let ctx = ExecutionContext::new(true, Some("trace-test".to_string()));
+    let ctx = ExecutionContext::new(true, Some("trace-test".to_string()), None, None, false);
 
     // Simulate a command that needs interaction
     let error = ctx.check_interaction_required(
@@ -33,7 +33,7 @@ fn test_non_interactive_context() {
 #[test]
 fn test_interactive_context() {
     // Test that ExecutionContext allows interaction in interactive mode
-    let ctx = ExecutionContext::new(false, None);
+    let ctx = ExecutionContext::new(false, None, None, None, false);
 
     // Simulate a command that needs interaction
     let error = ctx.check_interaction_required(

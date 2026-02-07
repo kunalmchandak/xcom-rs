@@ -20,6 +20,18 @@ pub struct Cli {
     #[arg(long, global = true, default_value = "text")]
     pub log_format: String,
 
+    /// Maximum cost in credits for a single operation (fail if exceeded)
+    #[arg(long, global = true)]
+    pub max_cost_credits: Option<u32>,
+
+    /// Daily budget in credits (fail if daily total would exceed)
+    #[arg(long, global = true)]
+    pub budget_daily_credits: Option<u32>,
+
+    /// Dry run mode - estimate costs without executing
+    #[arg(long, global = true)]
+    pub dry_run: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -44,6 +56,49 @@ pub enum Commands {
 
     /// Demo command that requires interaction (for testing non-interactive mode)
     DemoInteractive,
+
+    /// Authentication commands
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommands,
+    },
+
+    /// Billing commands
+    Billing {
+        #[command(subcommand)]
+        command: BillingCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AuthCommands {
+    /// Get current authentication status
+    Status,
+
+    /// Export authentication data
+    Export,
+
+    /// Import authentication data
+    Import {
+        /// Authentication data to import
+        data: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum BillingCommands {
+    /// Estimate cost for an operation
+    Estimate {
+        /// Operation to estimate (e.g., "tweets.create")
+        operation: String,
+
+        /// Optional parameters (key=value format)
+        #[arg(long)]
+        text: Option<String>,
+    },
+
+    /// Get billing report
+    Report,
 }
 
 #[cfg(test)]
