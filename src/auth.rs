@@ -344,9 +344,8 @@ mod tests {
         let path = AuthStore::default_storage_path();
 
         // Restore original value
-        match original {
-            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
-            None => {}
+        if let Some(val) = original {
+            std::env::set_var("XDG_CONFIG_HOME", val);
         }
 
         assert!(path.is_ok());

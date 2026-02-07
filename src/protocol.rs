@@ -84,6 +84,8 @@ pub struct ErrorDetails {
     pub message: String,
     #[serde(rename = "isRetryable")]
     pub is_retryable: bool,
+    #[serde(rename = "retryAfterMs", skip_serializing_if = "Option::is_none")]
+    pub retry_after_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<HashMap<String, serde_json::Value>>,
 }
@@ -95,6 +97,7 @@ impl ErrorDetails {
             code,
             message: message.into(),
             is_retryable,
+            retry_after_ms: None,
             details: None,
         }
     }
@@ -109,7 +112,23 @@ impl ErrorDetails {
             code,
             message: message.into(),
             is_retryable,
+            retry_after_ms: None,
             details: Some(details),
+        }
+    }
+
+    pub fn with_retry_after(
+        code: ErrorCode,
+        message: impl Into<String>,
+        retry_after_ms: u64,
+    ) -> Self {
+        let is_retryable = code.is_retryable();
+        Self {
+            code,
+            message: message.into(),
+            is_retryable,
+            retry_after_ms: Some(retry_after_ms),
+            details: None,
         }
     }
 
@@ -130,7 +149,7 @@ impl ErrorDetails {
 
 /// Error code vocabulary
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     InvalidArgument,
     MissingArgument,
@@ -138,6 +157,7 @@ pub enum ErrorCode {
     AuthenticationFailed,
     AuthorizationFailed,
     AuthRequired,
+    #[serde(rename = "rate_limited")]
     RateLimitExceeded,
     NetworkError,
     ServiceUnavailable,
@@ -145,6 +165,7 @@ pub enum ErrorCode {
     NotFound,
     InvalidState,
     InteractionRequired,
+    IdempotencyConflict,
     CostLimitExceeded,
     DailyBudgetExceeded,
 }
@@ -173,6 +194,7 @@ impl ErrorCode {
             | ErrorCode::NotFound
             | ErrorCode::InvalidState
             | ErrorCode::InteractionRequired
+            | ErrorCode::IdempotencyConflict
             | ErrorCode::CostLimitExceeded
             | ErrorCode::DailyBudgetExceeded => ExitCode::OperationFailed.into(),
             ErrorCode::InternalError => ExitCode::OperationFailed.into(),

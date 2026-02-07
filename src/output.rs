@@ -9,6 +9,7 @@ pub enum OutputFormat {
     Json,
     Yaml,
     Text,
+    Ndjson,
 }
 
 impl FromStr for OutputFormat {
@@ -19,6 +20,7 @@ impl FromStr for OutputFormat {
             "json" | "json-schema" => Ok(OutputFormat::Json),
             "yaml" => Ok(OutputFormat::Yaml),
             "text" => Ok(OutputFormat::Text),
+            "ndjson" => Ok(OutputFormat::Ndjson),
             _ => Err(anyhow::anyhow!("Invalid output format: {}", s)),
         }
     }
@@ -38,6 +40,20 @@ pub fn print_envelope<T: Serialize>(envelope: &Envelope<T>, format: OutputFormat
         OutputFormat::Text => {
             print_envelope_text(envelope)?;
         }
+        OutputFormat::Ndjson => {
+            // For NDJSON, print compact JSON without pretty formatting
+            let json = serde_json::to_string(envelope)?;
+            println!("{}", json);
+        }
+    }
+    Ok(())
+}
+
+/// Print array items as NDJSON (newline-delimited JSON)
+pub fn print_ndjson<T: Serialize>(items: &[T]) -> Result<()> {
+    for item in items {
+        let json = serde_json::to_string(item)?;
+        println!("{}", json);
     }
     Ok(())
 }
