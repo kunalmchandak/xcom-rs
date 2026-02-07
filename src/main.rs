@@ -328,17 +328,43 @@ fn main() {
                         }
                     }
                 }
-                AuthCommands::Import { data } => {
-                    tracing::info!("Executing auth import command");
-                    match auth_store.import(&data) {
-                        Ok(_) => {
-                            let status = auth_store.status();
-                            let envelope = if let Some(meta) = create_meta() {
-                                Envelope::success_with_meta("auth.import", status, meta)
+                AuthCommands::Import { data, dry_run } => {
+                    tracing::info!(dry_run = dry_run, "Executing auth import command");
+                    match auth_store.import_with_plan(&data, dry_run) {
+                        Ok(plan) => {
+                            // Check if the plan indicates failure
+                            if plan.action == xcom_rs::auth::ImportAction::Fail {
+                                let error = ErrorDetails::new(
+                                    ErrorCode::InvalidArgument,
+                                    plan.reason.unwrap_or_else(|| "Import failed".to_string()),
+                                );
+                                let envelope = if let Some(meta) = create_meta() {
+                                    Envelope::<()>::error_with_meta("error", error, meta)
+                                } else {
+                                    Envelope::<()>::error("error", error)
+                                };
+                                let _ = print_envelope(&envelope, output_format);
+                                std::process::exit(ExitCode::InvalidArgument.into());
+                            }
+
+                            // For dry-run, return the plan
+                            if dry_run {
+                                let envelope = if let Some(meta) = create_meta() {
+                                    Envelope::success_with_meta("auth.import", plan, meta)
+                                } else {
+                                    Envelope::success("auth.import", plan)
+                                };
+                                print_envelope(&envelope, output_format)
                             } else {
-                                Envelope::success("auth.import", status)
-                            };
-                            print_envelope(&envelope, output_format)
+                                // For actual import, return the status
+                                let status = auth_store.status();
+                                let envelope = if let Some(meta) = create_meta() {
+                                    Envelope::success_with_meta("auth.import", status, meta)
+                                } else {
+                                    Envelope::success("auth.import", status)
+                                };
+                                print_envelope(&envelope, output_format)
+                            }
                         }
                         Err(e) => {
                             let error =

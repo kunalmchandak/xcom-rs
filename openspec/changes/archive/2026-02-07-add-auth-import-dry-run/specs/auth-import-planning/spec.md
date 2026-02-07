@@ -1,6 +1,6 @@
 # auth-import-planning
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: auth import の事前計画
 auth import は実行前計画を提供することが MUST である。
