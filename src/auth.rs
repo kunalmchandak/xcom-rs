@@ -48,6 +48,18 @@ pub struct AuthToken {
     pub scopes: Vec<String>,
 }
 
+/// Compare two JSON strings for equality by parsing and re-serializing
+/// This handles key ordering differences
+fn json_content_equal(json1: &str, json2: &str) -> bool {
+    match (
+        serde_json::from_str::<serde_json::Value>(json1),
+        serde_json::from_str::<serde_json::Value>(json2),
+    ) {
+        (Ok(v1), Ok(v2)) => v1 == v2,
+        _ => false, // If parsing fails, treat as different
+    }
+}
+
 /// In-memory auth store for testing/stub implementation
 #[derive(Debug, Clone)]
 pub struct AuthStore {
@@ -99,11 +111,28 @@ impl AuthStore {
     }
 
     /// Save the current token to persistent storage
+    /// Only writes if the content has changed (prevents unnecessary file modifications)
     fn save_to_storage(&self) -> Result<()> {
         if let Some(path) = &self.storage_path {
             if let Some(token) = &self.token {
-                let json = serde_json::to_string_pretty(token)?;
-                std::fs::write(path, json)?;
+                let new_json = serde_json::to_string_pretty(token)?;
+
+                // Check if file exists and compare content
+                let should_write = if path.exists() {
+                    match std::fs::read_to_string(path) {
+                        Ok(existing_json) => {
+                            // Compare normalized JSON to handle key ordering differences
+                            !json_content_equal(&existing_json, &new_json)
+                        }
+                        Err(_) => true, // If we can't read, write anyway
+                    }
+                } else {
+                    true // File doesn't exist, write it
+                };
+
+                if should_write {
+                    std::fs::write(path, new_json)?;
+                }
             } else {
                 // If no token, delete the storage file
                 if path.exists() {
@@ -298,5 +327,97 @@ mod tests {
         let mut store = AuthStore::new();
         let result = store.import("invalid_data");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_stable_writes_same_content() {
+        // Test that writing the same token twice doesn't modify the file
+        let test_dir =
+            std::env::temp_dir().join(format!("auth-stable-test-{}", std::process::id()));
+        std::fs::create_dir_all(&test_dir).unwrap();
+        let test_path = test_dir.join("auth.json");
+
+        let token = AuthToken {
+            access_token: "test_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        // Create store and save token
+        let mut store = AuthStore::with_storage(test_path.clone()).unwrap();
+        store.set_token(token.clone());
+
+        // Get first modification time
+        let metadata1 = std::fs::metadata(&test_path).unwrap();
+        let mtime1 = metadata1.modified().unwrap();
+
+        // Wait to ensure timestamp would change if file was rewritten
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Save the same token again
+        store.set_token(token);
+
+        // Get second modification time
+        let metadata2 = std::fs::metadata(&test_path).unwrap();
+        let mtime2 = metadata2.modified().unwrap();
+
+        // Timestamps should be identical
+        assert_eq!(
+            mtime1, mtime2,
+            "File should not be rewritten when content is identical"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&test_dir).ok();
+    }
+
+    #[test]
+    fn test_stable_writes_different_content() {
+        // Test that writing different tokens does modify the file
+        let test_dir = std::env::temp_dir().join(format!("auth-diff-test-{}", std::process::id()));
+        std::fs::create_dir_all(&test_dir).unwrap();
+        let test_path = test_dir.join("auth.json");
+
+        let token1 = AuthToken {
+            access_token: "test_token_1".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        let token2 = AuthToken {
+            access_token: "test_token_2".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        // Create store and save first token
+        let mut store = AuthStore::with_storage(test_path.clone()).unwrap();
+        store.set_token(token1);
+
+        // Get first modification time
+        let metadata1 = std::fs::metadata(&test_path).unwrap();
+        let mtime1 = metadata1.modified().unwrap();
+
+        // Wait to ensure timestamp would change
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Save a different token
+        store.set_token(token2);
+
+        // Get second modification time
+        let metadata2 = std::fs::metadata(&test_path).unwrap();
+        let mtime2 = metadata2.modified().unwrap();
+
+        // Timestamps should be different
+        assert_ne!(
+            mtime1, mtime2,
+            "File should be rewritten when content changes"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&test_dir).ok();
     }
 }
