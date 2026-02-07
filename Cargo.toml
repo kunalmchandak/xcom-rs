@@ -1,6 +1,7 @@
 [package]
 name = "xcom-rs"
-version = "0.1.3"
+<<<<<<< HEAD
+version = "0.1.5"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "A CLI application"

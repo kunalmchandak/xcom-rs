@@ -123,6 +123,10 @@ pub enum AuthCommands {
     Import {
         /// Authentication data to import
         data: String,
+
+        /// Dry run mode - show what would be changed without saving
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

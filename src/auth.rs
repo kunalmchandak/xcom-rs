@@ -2,6 +2,71 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Action to be performed during import
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ImportAction {
+    /// Create new authentication entry
+    Create,
+    /// Update existing authentication entry
+    Update,
+    /// Skip - no changes needed
+    Skip,
+    /// Failed with error
+    Fail,
+}
+
+/// Plan for a single import operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportPlan {
+    /// Action to be performed
+    pub action: ImportAction,
+    /// Optional reason (required for Fail action)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Whether this is a dry-run
+    #[serde(rename = "dryRun")]
+    pub dry_run: bool,
+}
+
+impl ImportPlan {
+    /// Create a plan for creating new auth
+    pub fn create(dry_run: bool) -> Self {
+        Self {
+            action: ImportAction::Create,
+            reason: None,
+            dry_run,
+        }
+    }
+
+    /// Create a plan for updating existing auth
+    pub fn update(dry_run: bool) -> Self {
+        Self {
+            action: ImportAction::Update,
+            reason: None,
+            dry_run,
+        }
+    }
+
+    /// Create a plan for skipping (no changes)
+    pub fn skip(reason: String, dry_run: bool) -> Self {
+        Self {
+            action: ImportAction::Skip,
+            reason: Some(reason),
+            dry_run,
+        }
+    }
+
+    /// Create a plan for failed import
+    pub fn fail(reason: String, dry_run: bool) -> Self {
+        Self {
+            action: ImportAction::Fail,
+            reason: Some(reason),
+            dry_run,
+        }
+    }
+}
+
 /// Authentication status response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthStatus {
@@ -37,7 +102,7 @@ impl AuthStatus {
 }
 
 /// Authentication token data for export/import
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AuthToken {
     #[serde(rename = "accessToken")]
     pub access_token: String,
@@ -46,6 +111,18 @@ pub struct AuthToken {
     #[serde(rename = "expiresAt", skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<i64>,
     pub scopes: Vec<String>,
+}
+
+/// Compare two JSON strings for equality by parsing and re-serializing
+/// This handles key ordering differences
+fn json_content_equal(json1: &str, json2: &str) -> bool {
+    match (
+        serde_json::from_str::<serde_json::Value>(json1),
+        serde_json::from_str::<serde_json::Value>(json2),
+    ) {
+        (Ok(v1), Ok(v2)) => v1 == v2,
+        _ => false, // If parsing fails, treat as different
+    }
 }
 
 /// In-memory auth store for testing/stub implementation
@@ -103,11 +180,28 @@ impl AuthStore {
     }
 
     /// Save the current token to persistent storage
+    /// Only writes if the content has changed (prevents unnecessary file modifications)
     fn save_to_storage(&self) -> Result<()> {
         if let Some(path) = &self.storage_path {
             if let Some(token) = &self.token {
-                let json = serde_json::to_string_pretty(token)?;
-                std::fs::write(path, json)?;
+                let new_json = serde_json::to_string_pretty(token)?;
+
+                // Check if file exists and compare content
+                let should_write = if path.exists() {
+                    match std::fs::read_to_string(path) {
+                        Ok(existing_json) => {
+                            // Compare normalized JSON to handle key ordering differences
+                            !json_content_equal(&existing_json, &new_json)
+                        }
+                        Err(_) => true, // If we can't read, write anyway
+                    }
+                } else {
+                    true // File doesn't exist, write it
+                };
+
+                if should_write {
+                    std::fs::write(path, new_json)?;
+                }
             } else {
                 // If no token, delete the storage file
                 if path.exists() {
@@ -170,6 +264,66 @@ impl AuthStore {
         self.token = Some(token);
         self.save_to_storage()?;
         Ok(())
+    }
+
+    /// Import authentication data with dry-run support
+    /// Returns an ImportPlan describing what would happen
+    pub fn import_with_plan(&mut self, data: &str, dry_run: bool) -> Result<ImportPlan> {
+        // Validate and parse the data
+        let token = match self.validate_import_data(data) {
+            Ok(token) => token,
+            Err(e) => {
+                return Ok(ImportPlan::fail(e.to_string(), dry_run));
+            }
+        };
+
+        // Determine the action by comparing existing token with new token
+        let action = match &self.token {
+            None => ImportAction::Create,
+            Some(existing_token) => {
+                if existing_token == &token {
+                    ImportAction::Skip
+                } else {
+                    ImportAction::Update
+                }
+            }
+        };
+
+        // If Skip action, return early without saving
+        if action == ImportAction::Skip {
+            return Ok(ImportPlan::skip(
+                "Token is identical to existing token".to_string(),
+                dry_run,
+            ));
+        }
+
+        // If not dry-run, perform the actual import
+        if !dry_run {
+            self.token = Some(token);
+            if let Err(e) = self.save_to_storage() {
+                return Ok(ImportPlan::fail(format!("Failed to save: {}", e), dry_run));
+            }
+        }
+
+        // Return the plan
+        let plan = match action {
+            ImportAction::Create => ImportPlan::create(dry_run),
+            ImportAction::Update => ImportPlan::update(dry_run),
+            _ => unreachable!(),
+        };
+
+        Ok(plan)
+    }
+
+    /// Validate import data and return parsed token
+    fn validate_import_data(&self, data: &str) -> Result<AuthToken> {
+        let json =
+            base64::decode(data).map_err(|e| anyhow::anyhow!("Invalid auth data format: {}", e))?;
+        let json_str = String::from_utf8(json)
+            .map_err(|e| anyhow::anyhow!("Invalid auth data encoding: {}", e))?;
+        let token: AuthToken = serde_json::from_str(&json_str)
+            .map_err(|e| anyhow::anyhow!("Invalid auth data structure: {}", e))?;
+        Ok(token)
     }
 
     /// Set a token (for testing)
@@ -302,6 +456,181 @@ mod tests {
         let mut store = AuthStore::new();
         let result = store.import("invalid_data");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_import_plan_create() {
+        let mut store = AuthStore::new();
+        let token = AuthToken {
+            access_token: "test_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+        let exported = base64::encode(serde_json::to_string(&token).unwrap());
+
+        let plan = store.import_with_plan(&exported, true).unwrap();
+        assert_eq!(plan.action, ImportAction::Create);
+        assert!(plan.dry_run);
+        assert!(plan.reason.is_none());
+
+        // Verify no token was set in dry-run
+        assert!(!store.is_authenticated());
+    }
+
+    #[test]
+    fn test_import_plan_update() {
+        let mut store = AuthStore::new();
+        let token1 = AuthToken {
+            access_token: "old_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+        store.set_token(token1);
+
+        let token2 = AuthToken {
+            access_token: "new_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["write".to_string()],
+        };
+        let exported = base64::encode(serde_json::to_string(&token2).unwrap());
+
+        let plan = store.import_with_plan(&exported, true).unwrap();
+        assert_eq!(plan.action, ImportAction::Update);
+        assert!(plan.dry_run);
+
+        // Verify old token is still there in dry-run
+        assert_eq!(
+            store.token.as_ref().unwrap().access_token,
+            "old_token".to_string()
+        );
+    }
+
+    #[test]
+    fn test_import_plan_fail() {
+        let mut store = AuthStore::new();
+        let plan = store.import_with_plan("invalid_data", true).unwrap();
+        assert_eq!(plan.action, ImportAction::Fail);
+        assert!(plan.dry_run);
+        assert!(plan.reason.is_some());
+        assert!(plan.reason.unwrap().contains("Invalid"));
+    }
+
+    #[test]
+    fn test_import_plan_actual_import() {
+        let mut store = AuthStore::new();
+        let token = AuthToken {
+            access_token: "test_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+        let exported = base64::encode(serde_json::to_string(&token).unwrap());
+
+        let plan = store.import_with_plan(&exported, false).unwrap();
+        assert_eq!(plan.action, ImportAction::Create);
+        assert!(!plan.dry_run);
+
+        // Verify token was actually set
+        assert!(store.is_authenticated());
+        assert_eq!(
+            store.token.as_ref().unwrap().access_token,
+            "test_token".to_string()
+        );
+    }
+
+    #[test]
+    fn test_stable_writes_same_content() {
+        // Test that writing the same token twice doesn't modify the file
+        let test_dir =
+            std::env::temp_dir().join(format!("auth-stable-test-{}", std::process::id()));
+        std::fs::create_dir_all(&test_dir).unwrap();
+        let test_path = test_dir.join("auth.json");
+
+        let token = AuthToken {
+            access_token: "test_token".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        // Create store and save token
+        let mut store = AuthStore::with_storage(test_path.clone()).unwrap();
+        store.set_token(token.clone());
+
+        // Get first modification time
+        let metadata1 = std::fs::metadata(&test_path).unwrap();
+        let mtime1 = metadata1.modified().unwrap();
+
+        // Wait to ensure timestamp would change if file was rewritten
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Save the same token again
+        store.set_token(token);
+
+        // Get second modification time
+        let metadata2 = std::fs::metadata(&test_path).unwrap();
+        let mtime2 = metadata2.modified().unwrap();
+
+        // Timestamps should be identical
+        assert_eq!(
+            mtime1, mtime2,
+            "File should not be rewritten when content is identical"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&test_dir).ok();
+    }
+
+    #[test]
+    fn test_stable_writes_different_content() {
+        // Test that writing different tokens does modify the file
+        let test_dir = std::env::temp_dir().join(format!("auth-diff-test-{}", std::process::id()));
+        std::fs::create_dir_all(&test_dir).unwrap();
+        let test_path = test_dir.join("auth.json");
+
+        let token1 = AuthToken {
+            access_token: "test_token_1".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        let token2 = AuthToken {
+            access_token: "test_token_2".to_string(),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scopes: vec!["read".to_string()],
+        };
+
+        // Create store and save first token
+        let mut store = AuthStore::with_storage(test_path.clone()).unwrap();
+        store.set_token(token1);
+
+        // Get first modification time
+        let metadata1 = std::fs::metadata(&test_path).unwrap();
+        let mtime1 = metadata1.modified().unwrap();
+
+        // Wait to ensure timestamp would change
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Save a different token
+        store.set_token(token2);
+
+        // Get second modification time
+        let metadata2 = std::fs::metadata(&test_path).unwrap();
+        let mtime2 = metadata2.modified().unwrap();
+
+        // Timestamps should be different
+        assert_ne!(
+            mtime1, mtime2,
+            "File should be rewritten when content changes"
+        );
+
+        // Cleanup
+        std::fs::remove_dir_all(&test_dir).ok();
     }
 
     #[test]
