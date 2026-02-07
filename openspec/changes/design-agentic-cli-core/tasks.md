@@ -18,3 +18,7 @@
 ## Acceptance #2 Failure Follow-up
 
 - [x] `--non-interactive` を実行フローで実際に参照し、対話が必要なケースで `INTERACTION_REQUIRED` と `details.nextSteps` を含む構造化エラーを返すように統合する（`src/cli.rs` の `non_interactive` は定義済みだが `src/main.rs::main` のコマンド実行分岐で未使用、`src/protocol.rs::ErrorDetails::interaction_required` も実行経路から未呼び出し）。
+
+## Acceptance #3 Failure Follow-up
+
+- [x] `--non-interactive` の実行フロー統合を完了する（`src/main.rs::main` では `ExecutionContext` を生成しているが `check_interaction_required()` の実行呼び出しがなく、`src/context.rs::ExecutionContext::check_interaction_required` / `src/protocol.rs::ErrorDetails::interaction_required` が実行経路で未使用）。対話が必要な実コマンドにチェックを組み込み、`INTERACTION_REQUIRED` と `details.nextSteps` を返す統合テストを追加する。

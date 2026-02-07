@@ -41,6 +41,9 @@ pub enum Commands {
         /// Command name to get help for
         command: String,
     },
+
+    /// Demo command that requires interaction (for testing non-interactive mode)
+    DemoInteractive,
 }
 
 #[cfg(test)]

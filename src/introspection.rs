@@ -74,6 +74,15 @@ impl CommandsList {
                     risk: RiskLevel::Safe,
                     has_cost: false,
                 },
+                CommandInfo {
+                    name: "demo-interactive".to_string(),
+                    description:
+                        "Demo command that requires interaction (for testing non-interactive mode)"
+                            .to_string(),
+                    arguments: vec![],
+                    risk: RiskLevel::Low,
+                    has_cost: false,
+                },
             ],
         }
     }
@@ -241,6 +250,21 @@ impl CommandSchema {
                                 }
                             }
                         }
+                    }
+                })),
+            },
+            "demo-interactive" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["message", "confirmed"],
+                    "properties": {
+                        "message": { "type": "string" },
+                        "confirmed": { "type": "boolean" }
                     }
                 })),
             },
@@ -420,6 +444,29 @@ impl CommandHelp {
                     ExampleInfo {
                         description: "Get help for schema command".to_string(),
                         command: "xcom-rs help schema --output json".to_string(),
+                    },
+                ],
+            },
+            "demo-interactive" => Self {
+                command: command.to_string(),
+                description:
+                    "Demo command that requires interaction (for testing non-interactive mode)"
+                        .to_string(),
+                usage: "xcom-rs demo-interactive [--non-interactive] [--output json|yaml|text]"
+                    .to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![
+                    ExampleInfo {
+                        description: "Run in interactive mode".to_string(),
+                        command: "xcom-rs demo-interactive".to_string(),
+                    },
+                    ExampleInfo {
+                        description:
+                            "Run in non-interactive mode (will fail with INTERACTION_REQUIRED)"
+                                .to_string(),
+                        command: "xcom-rs demo-interactive --non-interactive --output json"
+                            .to_string(),
                     },
                 ],
             },

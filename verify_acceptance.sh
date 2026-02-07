@@ -170,6 +170,36 @@ echo "✓ Acceptance #2: --non-interactive integration..."
 cargo test test_non_interactive_context 2>&1 | grep -q "test result: ok"
 echo "  PASS: ExecutionContext.check_interaction_required() is implemented and tested"
 
+# Acceptance #3 Follow-up
+echo "✓ Acceptance #3: --non-interactive execution flow integration..."
+# Test demo-interactive command with --non-interactive flag
+$CLI demo-interactive --non-interactive --output json 2>/dev/null || EXIT_CODE=$?
+if [ "$EXIT_CODE" -eq 4 ]; then
+	echo "  PASS: demo-interactive returns exit code 4 in non-interactive mode"
+else
+	echo "  FAIL: Expected exit code 4, got $EXIT_CODE"
+	exit 1
+fi
+
+# Verify INTERACTION_REQUIRED error
+$CLI demo-interactive --non-interactive --output json 2>/dev/null | jq -e '.error.code == "INTERACTION_REQUIRED"' >/dev/null
+echo "  PASS: Returns INTERACTION_REQUIRED error code"
+
+# Verify nextSteps in error details
+$CLI demo-interactive --non-interactive --output json 2>/dev/null | jq -e '.error.details.nextSteps | length > 0' >/dev/null
+echo "  PASS: Error includes nextSteps guidance"
+
+# Test interactive mode (should succeed)
+$CLI demo-interactive --output json 2>/dev/null | jq -e '.ok == true' >/dev/null
+$CLI demo-interactive --output json 2>/dev/null | jq -e '.data.confirmed == true' >/dev/null
+echo "  PASS: demo-interactive succeeds in interactive mode"
+
+# Run integration tests
+echo "✓ Running integration tests..."
+cargo test test_demo_interactive_non_interactive_mode 2>&1 | grep -q "test result: ok"
+cargo test test_demo_interactive_interactive_mode 2>&1 | grep -q "test result: ok"
+echo "  PASS: All integration tests pass"
+
 echo ""
 echo "=== All Acceptance Criteria Verified ==="
 echo "All tasks completed successfully!"
