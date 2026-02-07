@@ -137,6 +137,7 @@ pub enum ErrorCode {
     NotFound,
     InvalidState,
     InteractionRequired,
+    IdempotencyConflict,
 }
 
 impl ErrorCode {
@@ -162,7 +163,8 @@ impl ErrorCode {
             | ErrorCode::ServiceUnavailable
             | ErrorCode::NotFound
             | ErrorCode::InvalidState
-            | ErrorCode::InteractionRequired => ExitCode::OperationFailed.into(),
+            | ErrorCode::InteractionRequired
+            | ErrorCode::IdempotencyConflict => ExitCode::OperationFailed.into(),
             ErrorCode::InternalError => ExitCode::OperationFailed.into(),
         }
     }

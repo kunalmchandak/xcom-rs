@@ -7,6 +7,24 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use uuid::Uuid;
 
+/// Custom error type for idempotency conflicts
+#[derive(Debug)]
+pub struct IdempotencyConflictError {
+    pub client_request_id: String,
+}
+
+impl std::fmt::Display for IdempotencyConflictError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Operation with client_request_id '{}' already exists",
+            self.client_request_id
+        )
+    }
+}
+
+impl std::error::Error for IdempotencyConflictError {}
+
 /// Policy for handling existing operations with the same client_request_id
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IfExistsPolicy {
@@ -63,12 +81,28 @@ pub struct CreateResult {
     pub meta: TweetMeta,
 }
 
+/// Pagination metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginationMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev_cursor: Option<String>,
+}
+
 /// Result of a list operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListResult {
     pub tweets: Vec<Tweet>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_cursor: Option<String>,
+    pub meta: Option<ListResultMeta>,
+}
+
+/// Metadata for list results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListResultMeta {
+    pub pagination: PaginationMeta,
 }
 
 /// Error classification for retry logic
@@ -89,6 +123,7 @@ pub struct ClassifiedError {
     pub status_code: Option<u16>,
     pub message: String,
     pub is_retryable: bool,
+    pub retry_after_ms: Option<u64>,
 }
 
 impl ClassifiedError {
@@ -105,6 +140,7 @@ impl ClassifiedError {
             status_code: Some(status_code),
             message,
             is_retryable,
+            retry_after_ms: None,
         }
     }
 
@@ -114,9 +150,39 @@ impl ClassifiedError {
             status_code: None,
             message,
             is_retryable: true,
+            retry_after_ms: None,
+        }
+    }
+
+    pub fn with_retry_after(mut self, retry_after_ms: u64) -> Self {
+        self.retry_after_ms = Some(retry_after_ms);
+        self
+    }
+
+    /// Convert to ErrorCode for protocol
+    pub fn to_error_code(&self) -> crate::protocol::ErrorCode {
+        use crate::protocol::ErrorCode;
+        match self.kind {
+            ErrorKind::Retryable => {
+                if let Some(429) = self.status_code {
+                    ErrorCode::RateLimitExceeded
+                } else {
+                    ErrorCode::ServiceUnavailable
+                }
+            }
+            ErrorKind::Timeout => ErrorCode::NetworkError,
+            ErrorKind::NonRetryable => ErrorCode::InternalError,
         }
     }
 }
+
+impl std::fmt::Display for ClassifiedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for ClassifiedError {}
 
 /// Main tweets command handler
 pub struct TweetCommand {
@@ -140,12 +206,13 @@ impl TweetCommand {
         let request_hash = IdempotencyLedger::compute_request_hash(&args.text);
 
         // Check ledger for existing operation
+        // The lookup will only return an entry if both client_request_id AND request_hash match
         if let Some(entry) = self
             .ledger
             .lookup(&client_request_id, &request_hash)
             .context("Failed to lookup operation in ledger")?
         {
-            // Found existing operation
+            // Found existing operation with matching parameters
             match args.if_exists {
                 IfExistsPolicy::Return => {
                     // Return cached result
@@ -160,17 +227,13 @@ impl TweetCommand {
                     return Ok(CreateResult { tweet, meta });
                 }
                 IfExistsPolicy::Error => {
-                    return Err(anyhow!(
-                        "Operation with client_request_id '{}' already exists",
-                        client_request_id
-                    ));
+                    return Err(IdempotencyConflictError {
+                        client_request_id: client_request_id.clone(),
+                    }
+                    .into());
                 }
             }
         }
-
-        // If request_hash differs but client_request_id is the same,
-        // this is a different request and should not be deduplicated
-        // (prevented by PRIMARY KEY constraint in ledger)
 
         // Simulate tweet creation (in real implementation, would call X API)
         let tweet_id = format!("tweet_{}", Uuid::new_v4());
@@ -195,8 +258,19 @@ impl TweetCommand {
         // Simulate fetching tweets (in real implementation, would call X API)
         let limit = args.limit.unwrap_or(10);
 
+        // Parse cursor to determine starting offset
+        let offset = if let Some(cursor) = &args.cursor {
+            // Cursor format is "cursor_{offset}"
+            cursor
+                .strip_prefix("cursor_")
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
         let mut tweets = Vec::new();
-        for i in 0..limit {
+        for i in offset..(offset + limit) {
             let mut tweet = Tweet::new(format!("tweet_{}", i));
             tweet.text = Some(format!("Tweet text {}", i));
             tweet.author_id = Some(format!("user_{}", i));
@@ -207,17 +281,27 @@ impl TweetCommand {
             tweets.push(projected);
         }
 
-        // Simulate pagination
+        // Create pagination metadata
         let next_cursor = if tweets.len() == limit {
-            Some(format!("cursor_{}", limit))
+            Some(format!("cursor_{}", offset + limit))
         } else {
             None
         };
 
-        Ok(ListResult {
-            tweets,
-            next_cursor,
-        })
+        let prev_cursor = if offset > 0 {
+            Some(format!("cursor_{}", offset.saturating_sub(limit)))
+        } else {
+            None
+        };
+
+        let meta = Some(ListResultMeta {
+            pagination: PaginationMeta {
+                next_cursor,
+                prev_cursor,
+            },
+        });
+
+        Ok(ListResult { tweets, meta })
     }
 }
 
@@ -335,7 +419,11 @@ mod tests {
 
         let result = cmd.list(args).unwrap();
         assert_eq!(result.tweets.len(), 10);
-        assert!(result.next_cursor.is_some());
+        assert!(result.meta.is_some());
+        let meta = result.meta.unwrap();
+        assert!(meta.pagination.next_cursor.is_some());
+        assert_eq!(meta.pagination.next_cursor, Some("cursor_10".to_string()));
+        assert!(meta.pagination.prev_cursor.is_none());
     }
 
     #[test]

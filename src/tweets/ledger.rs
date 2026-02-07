@@ -49,20 +49,12 @@ impl IdempotencyLedger {
     fn init_schema(&self) -> Result<()> {
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS tweet_operations (
-                client_request_id TEXT NOT NULL,
+                client_request_id TEXT NOT NULL PRIMARY KEY,
                 request_hash TEXT NOT NULL,
                 tweet_id TEXT NOT NULL,
                 status TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                PRIMARY KEY (client_request_id, request_hash)
+                created_at INTEGER NOT NULL
             )",
-            [],
-        )?;
-
-        // Create index for faster lookups
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_client_request_id 
-             ON tweet_operations(client_request_id)",
             [],
         )?;
 
@@ -98,7 +90,8 @@ impl IdempotencyLedger {
         Ok(())
     }
 
-    /// Look up an existing operation by client_request_id and request_hash
+    /// Look up an existing operation by client_request_id
+    /// Returns the entry only if the request_hash matches (prevents replay with different parameters)
     pub fn lookup(
         &self,
         client_request_id: &str,
@@ -107,11 +100,11 @@ impl IdempotencyLedger {
         let mut stmt = self.conn.prepare(
             "SELECT client_request_id, request_hash, tweet_id, status, created_at
              FROM tweet_operations
-             WHERE client_request_id = ?1 AND request_hash = ?2",
+             WHERE client_request_id = ?1",
         )?;
 
         let entry = stmt
-            .query_row(params![client_request_id, request_hash], |row| {
+            .query_row(params![client_request_id], |row| {
                 Ok(LedgerEntry {
                     client_request_id: row.get(0)?,
                     request_hash: row.get(1)?,
@@ -122,7 +115,9 @@ impl IdempotencyLedger {
             })
             .optional()?;
 
-        Ok(entry)
+        // Only return the entry if the request_hash matches
+        // This prevents replay attacks with different parameters
+        Ok(entry.filter(|e| e.request_hash == request_hash))
     }
 
     /// Clean up old entries (garbage collection)
