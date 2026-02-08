@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use std::str::FromStr;
 use xcom_rs::{
     auth::AuthStore,
@@ -71,6 +71,12 @@ fn main() {
         })
     };
 
+    // If no subcommand is provided, show help and exit successfully
+    if cli.command.is_none() {
+        let _ = Cli::command().print_help();
+        std::process::exit(ExitCode::Success.into());
+    }
+
     let ctx = ExecutionContext::new(
         cli.non_interactive,
         cli.trace_id.clone(),
@@ -88,7 +94,10 @@ fn main() {
         AuthStore::new()
     });
 
-    let result = match cli.command.unwrap_or(Commands::Commands) {
+    let result = match cli
+        .command
+        .expect("Command should be present after None check")
+    {
         Commands::Commands => {
             tracing::info!("Executing commands command");
             let commands = CommandsList::new();
