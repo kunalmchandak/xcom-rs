@@ -49,15 +49,11 @@ fn test_interactive_context() {
 
 #[test]
 fn test_demo_interactive_non_interactive_mode() {
-    // Build the binary first
-    let build_status = Command::new("cargo")
-        .args(["build", "--release"])
-        .status()
-        .expect("Failed to build binary");
-    assert!(build_status.success(), "Build failed");
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
 
     // Test demo-interactive command with --non-interactive flag
-    let output = Command::new("./target/release/xcom-rs")
+    let output = Command::new(bin_path)
         .args(["demo-interactive", "--non-interactive", "--output", "json"])
         .output()
         .expect("Failed to execute command");
@@ -97,15 +93,11 @@ fn test_demo_interactive_non_interactive_mode() {
 
 #[test]
 fn test_demo_interactive_interactive_mode() {
-    // Build the binary first
-    let build_status = Command::new("cargo")
-        .args(["build", "--release"])
-        .status()
-        .expect("Failed to build binary");
-    assert!(build_status.success(), "Build failed");
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
 
     // Test demo-interactive command without --non-interactive flag (should succeed)
-    let output = Command::new("./target/release/xcom-rs")
+    let output = Command::new(bin_path)
         .args(["demo-interactive", "--output", "json"])
         .output()
         .expect("Failed to execute command");
