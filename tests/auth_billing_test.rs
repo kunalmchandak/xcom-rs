@@ -1,6 +1,7 @@
 /// Integration tests for auth and billing functionality
 /// These tests verify the requirements from tasks.md without network dependencies
 use std::process::Command;
+use xcom_rs::test_utils::helpers::{assert_error_json, assert_success_json};
 
 #[test]
 fn test_auth_status_unauthenticated_fixture() {
@@ -15,10 +16,7 @@ fn test_auth_status_unauthenticated_fixture() {
         .output()
         .expect("Failed to execute command");
 
-    assert!(output.status.success(), "Command should succeed");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_success_json(&output);
 
     // Verify structure from task 1
     assert_eq!(json["ok"], true, "ok should be true");
@@ -63,11 +61,7 @@ fn test_auth_export_import_roundtrip() {
         .output()
         .expect("Failed to execute auth import");
 
-    assert!(import_output.status.success(), "Auth import should succeed");
-
-    let import_stdout = String::from_utf8_lossy(&import_output.stdout);
-    let import_json: serde_json::Value =
-        serde_json::from_str(&import_stdout).expect("Auth import should return valid JSON");
+    let import_json = assert_success_json(&import_output);
 
     assert_eq!(import_json["ok"], true, "Import should succeed");
     assert_eq!(
@@ -82,11 +76,7 @@ fn test_auth_export_import_roundtrip() {
         .output()
         .expect("Failed to execute auth status");
 
-    assert!(status_output.status.success(), "Auth status should succeed");
-
-    let status_stdout = String::from_utf8_lossy(&status_output.stdout);
-    let status_json: serde_json::Value =
-        serde_json::from_str(&status_stdout).expect("Auth status should return valid JSON");
+    let status_json = assert_success_json(&status_output);
 
     assert_eq!(status_json["ok"], true);
     assert_eq!(
@@ -101,11 +91,7 @@ fn test_auth_export_import_roundtrip() {
         .output()
         .expect("Failed to execute auth export");
 
-    assert!(export_output.status.success(), "Auth export should succeed");
-
-    let export_stdout = String::from_utf8_lossy(&export_output.stdout);
-    let export_json: serde_json::Value =
-        serde_json::from_str(&export_stdout).expect("Auth export should return valid JSON");
+    let export_json = assert_success_json(&export_output);
 
     assert_eq!(export_json["ok"], true);
     assert!(
@@ -133,14 +119,7 @@ fn test_non_interactive_auth_error() {
         .output()
         .expect("Failed to execute command");
 
-    assert_eq!(
-        output.status.code(),
-        Some(3),
-        "Should exit with code 3 for auth required"
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_error_json(&output, 3);
 
     // Verify error structure from task 3
     assert_eq!(json["ok"], false, "ok should be false");
@@ -172,10 +151,7 @@ fn test_billing_estimate_structure() {
         .output()
         .expect("Failed to execute command");
 
-    assert!(output.status.success(), "Command should succeed");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_success_json(&output);
 
     // Verify structure from task 4
     assert_eq!(json["ok"], true, "ok should be true");
@@ -210,14 +186,7 @@ fn test_max_cost_credits_guard() {
         .expect("Failed to execute command");
 
     // Should fail because cost is >= 2 (base 5 credits for tweets.create)
-    assert_eq!(
-        output.status.code(),
-        Some(4),
-        "Should exit with code 4 when cost exceeds limit"
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_error_json(&output, 4);
 
     // Verify error structure from task 5
     assert_eq!(json["ok"], false, "ok should be false");
@@ -254,11 +223,7 @@ fn test_budget_daily_credits_tracking() {
         .output()
         .expect("Failed to execute billing estimate");
 
-    assert!(output1.status.success(), "First estimate should succeed");
-
-    let stdout1 = String::from_utf8_lossy(&output1.stdout);
-    let json1: serde_json::Value =
-        serde_json::from_str(&stdout1).expect("Should return valid JSON");
+    let json1 = assert_success_json(&output1);
     assert_eq!(json1["ok"], true);
 
     // Step 2: Run another command that would exceed the daily budget
@@ -284,15 +249,7 @@ fn test_budget_daily_credits_tracking() {
         .expect("Failed to execute billing estimate");
 
     // Should fail because cost exceeds budget
-    assert_eq!(
-        output2.status.code(),
-        Some(4),
-        "Should exit with code 4 when daily budget exceeded"
-    );
-
-    let stdout2 = String::from_utf8_lossy(&output2.stdout);
-    let json2: serde_json::Value =
-        serde_json::from_str(&stdout2).expect("Should return valid JSON");
+    let json2 = assert_error_json(&output2, 4);
     assert_eq!(json2["ok"], false);
     assert_eq!(json2["error"]["code"], "daily_budget_exceeded");
 
@@ -319,10 +276,7 @@ fn test_dry_run_zero_cost() {
         .output()
         .expect("Failed to execute command");
 
-    assert!(output.status.success(), "Command should succeed");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_success_json(&output);
 
     // Verify structure from task 7
     assert_eq!(json["ok"], true, "ok should be true");
@@ -364,13 +318,7 @@ fn test_auth_import_dry_run_create() {
         .output()
         .expect("Failed to execute auth import dry-run");
 
-    assert!(
-        output.status.success(),
-        "Auth import dry-run should succeed"
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_success_json(&output);
 
     // Verify dry-run response
     assert_eq!(json["ok"], true, "ok should be true");
@@ -413,10 +361,7 @@ fn test_auth_import_dry_run_update() {
         .output()
         .expect("Failed to execute initial auth import");
 
-    assert!(
-        import_output.status.success(),
-        "Initial import should succeed"
-    );
+    assert_success_json(&import_output);
 
     // Now test dry-run with new data
     let test_token_data2 = "STUB_B64_{\"accessToken\":\"new_token\",\"tokenType\":\"Bearer\",\"expiresAt\":null,\"scopes\":[\"write\"]}";
@@ -487,10 +432,7 @@ fn test_auth_import_dry_run_skip() {
         .output()
         .expect("Failed to execute initial auth import");
 
-    assert!(
-        import_output.status.success(),
-        "Initial import should succeed"
-    );
+    assert_success_json(&import_output);
 
     // Now test dry-run with the same data
     let dry_run_output = Command::new("cargo")
@@ -508,13 +450,7 @@ fn test_auth_import_dry_run_skip() {
         .output()
         .expect("Failed to execute auth import dry-run");
 
-    assert!(
-        dry_run_output.status.success(),
-        "Auth import dry-run should succeed"
-    );
-
-    let stdout = String::from_utf8_lossy(&dry_run_output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_success_json(&dry_run_output);
 
     // Verify dry-run response with skip action
     assert_eq!(json["ok"], true, "ok should be true");
@@ -609,7 +545,7 @@ fn test_auth_storage_stable_writes() {
         .output()
         .expect("Failed to execute auth import");
 
-    assert!(import_output.status.success(), "Auth import should succeed");
+    assert_success_json(&import_output);
 
     // Get the file path and its first modification time
     let auth_file = test_dir.join(".local/share/xcom-rs/auth.json");
@@ -638,10 +574,7 @@ fn test_auth_storage_stable_writes() {
         .output()
         .expect("Failed to execute auth import");
 
-    assert!(
-        import_output2.status.success(),
-        "Second auth import should succeed"
-    );
+    assert_success_json(&import_output2);
 
     // Check that modification time hasn't changed
     let metadata2 = std::fs::metadata(&auth_file).expect("Failed to get file metadata");

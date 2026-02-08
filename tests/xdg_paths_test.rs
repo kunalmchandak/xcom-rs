@@ -1,8 +1,10 @@
 /// Integration tests for XDG paths support
 /// These tests verify that XDG_CONFIG_HOME and XDG_DATA_HOME are respected
 use std::process::Command;
+use xcom_rs::test_utils::helpers::assert_success_json;
 
 #[test]
+#[cfg_attr(not(feature = "env-tests"), ignore)]
 fn test_auth_storage_respects_xdg_data_home() {
     // Create a temporary test directory
     let test_dir =
@@ -27,7 +29,7 @@ fn test_auth_storage_respects_xdg_data_home() {
         .output()
         .expect("Failed to execute auth import");
 
-    assert!(import_output.status.success(), "Auth import should succeed");
+    assert_success_json(&import_output);
 
     // Verify the auth file was created in XDG_DATA_HOME
     let expected_path = xdg_data.join("xcom-rs").join("auth.json");
@@ -44,11 +46,7 @@ fn test_auth_storage_respects_xdg_data_home() {
         .output()
         .expect("Failed to execute auth status");
 
-    assert!(status_output.status.success(), "Auth status should succeed");
-
-    let status_stdout = String::from_utf8_lossy(&status_output.stdout);
-    let status_json: serde_json::Value =
-        serde_json::from_str(&status_stdout).expect("Auth status should return valid JSON");
+    let status_json = assert_success_json(&status_output);
 
     assert_eq!(status_json["ok"], true);
     assert_eq!(
@@ -61,6 +59,7 @@ fn test_auth_storage_respects_xdg_data_home() {
 }
 
 #[test]
+#[cfg_attr(not(feature = "env-tests"), ignore)]
 fn test_billing_storage_respects_xdg_data_home() {
     // Create a temporary test directory
     let test_dir =
@@ -88,10 +87,7 @@ fn test_billing_storage_respects_xdg_data_home() {
         .output()
         .expect("Failed to execute billing estimate");
 
-    assert!(
-        estimate_output.status.success(),
-        "Billing estimate should succeed"
-    );
+    assert_success_json(&estimate_output);
 
     // Verify the budget file was created in XDG_DATA_HOME
     let expected_path = xdg_data.join("xcom-rs").join("budget.json");
@@ -110,6 +106,7 @@ fn test_billing_storage_respects_xdg_data_home() {
 }
 
 #[test]
+#[cfg_attr(not(feature = "env-tests"), ignore)]
 fn test_fallback_to_default_path_without_xdg() {
     // Create a temporary test directory
     let test_dir =
@@ -134,7 +131,7 @@ fn test_fallback_to_default_path_without_xdg() {
         .output()
         .expect("Failed to execute auth import");
 
-    assert!(import_output.status.success(), "Auth import should succeed");
+    assert_success_json(&import_output);
 
     // Verify the auth file was created in HOME/.local/share/xcom-rs/
     let expected_path = test_dir

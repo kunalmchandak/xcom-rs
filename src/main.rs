@@ -4,6 +4,7 @@ use xcom_rs::{
     auth::AuthStore,
     cli::{Cli, Commands},
     context::ExecutionContext,
+    errors::ErrorResponder,
     handlers,
     logging::{init_logging, LogFormat},
     output::{print_envelope, OutputFormat},
@@ -27,10 +28,8 @@ fn main() {
                     _ => (ErrorCode::InvalidArgument, ExitCode::InvalidArgument),
                 };
 
-                let error = ErrorDetails::new(error_code, e.to_string());
-                let envelope = Envelope::<()>::error("error", error);
-                let _ = print_envelope(&envelope, OutputFormat::Json);
-                std::process::exit(exit_code.into());
+                let error = ErrorResponder::error(error_code, e.to_string());
+                ErrorResponder::emit(error, OutputFormat::Json, None, exit_code);
             }
         },
     };
@@ -49,34 +48,19 @@ fn main() {
     let output_format = match OutputFormat::from_str(&cli.output) {
         Ok(fmt) => fmt,
         Err(e) => {
-            let error = ErrorDetails::new(ErrorCode::InvalidArgument, e.to_string());
-            let meta = cli.trace_id.as_ref().map(|trace_id| {
-                let mut m = std::collections::HashMap::new();
-                m.insert("traceId".to_string(), serde_json::json!(trace_id));
-                m
-            });
-            let envelope = if let Some(meta) = meta {
-                Envelope::<()>::error_with_meta("error", error, meta)
-            } else {
-                Envelope::<()>::error("error", error)
-            };
-            let _ = print_envelope(&envelope, OutputFormat::Json);
-            std::process::exit(ExitCode::InvalidArgument.into());
+            let error = ErrorResponder::error(ErrorCode::InvalidArgument, e.to_string());
+            let meta = ErrorResponder::create_meta(cli.trace_id.as_ref());
+            ErrorResponder::emit(error, OutputFormat::Json, meta, ExitCode::InvalidArgument);
         }
     };
 
     let create_meta = || -> Option<std::collections::HashMap<String, serde_json::Value>> {
-        cli.trace_id.as_ref().map(|trace_id| {
-            let mut m = std::collections::HashMap::new();
-            m.insert("traceId".to_string(), serde_json::json!(trace_id));
-            m
-        })
+        ErrorResponder::create_meta(cli.trace_id.as_ref())
     };
 
     let command = match cli.command {
         Some(cmd) => cmd,
         None => {
-            // No subcommand provided, show help and exit successfully
             let _ = Cli::command().print_help();
             std::process::exit(ExitCode::Success.into());
         }
@@ -131,14 +115,9 @@ fn main() {
         }
         Err(e) => {
             tracing::error!(error = %e, "Command failed");
-            let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
-            let envelope = if let Some(meta) = create_meta() {
-                Envelope::<()>::error_with_meta("error", error, meta)
-            } else {
-                Envelope::<()>::error("error", error)
-            };
-            let _ = print_envelope(&envelope, output_format);
-            std::process::exit(ExitCode::OperationFailed.into());
+            let error = ErrorResponder::error(ErrorCode::InternalError, e.to_string());
+            let meta = create_meta();
+            ErrorResponder::emit(error, output_format, meta, ExitCode::OperationFailed);
         }
     }
 }

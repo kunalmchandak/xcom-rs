@@ -3,12 +3,11 @@ pub mod billing;
 pub mod cli;
 pub mod context;
 pub mod doctor;
+pub mod errors;
 pub mod handlers;
 pub mod introspection;
 pub mod logging;
 pub mod output;
 pub mod protocol;
+pub mod test_utils;
 pub mod tweets;
-
-#[cfg(test)]
-mod test_utils;
