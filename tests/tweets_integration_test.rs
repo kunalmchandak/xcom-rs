@@ -1,13 +1,15 @@
 /// Integration tests for tweets operations with HTTP mocking
-use tempfile::TempDir;
-use xcom_rs::tweets::{CreateArgs, IdempotencyLedger, IfExistsPolicy, TweetCommand};
+use xcom_rs::test_utils::helpers::{
+    create_test_db_path, create_test_dir, create_test_ledger_with_db,
+};
+use xcom_rs::tweets::{CreateArgs, IfExistsPolicy, TweetCommand};
 
 /// Test simulating a timeout followed by successful retry
 #[test]
 fn test_timeout_retry_with_ledger() {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-    let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+    let temp_dir = create_test_dir("tweets-retry");
+    let db_path = create_test_db_path(temp_dir.path());
+    let ledger = create_test_ledger_with_db(&db_path);
     let cmd = TweetCommand::new(ledger);
 
     let client_request_id = "retry-test-123";
@@ -42,9 +44,9 @@ fn test_timeout_retry_with_ledger() {
 /// Test that same client_request_id returns cached result regardless of content
 #[test]
 fn test_different_content_same_client_request_id() {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-    let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+    let temp_dir = create_test_dir("tweets-different-content");
+    let db_path = create_test_db_path(temp_dir.path());
+    let ledger = create_test_ledger_with_db(&db_path);
     let cmd = TweetCommand::new(ledger);
 
     let client_request_id = "test-456";
@@ -76,9 +78,9 @@ fn test_different_content_same_client_request_id() {
 /// Test error policy when duplicate detected
 #[test]
 fn test_if_exists_error_policy() {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-    let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+    let temp_dir = create_test_dir("tweets-error-policy");
+    let db_path = create_test_db_path(temp_dir.path());
+    let ledger = create_test_ledger_with_db(&db_path);
     let cmd = TweetCommand::new(ledger);
 
     let client_request_id = "error-test-789";
@@ -107,9 +109,9 @@ fn test_if_exists_error_policy() {
 fn test_ndjson_output_format() {
     use xcom_rs::tweets::{ListArgs, TweetFields};
 
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-    let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+    let temp_dir = create_test_dir("tweets-ndjson");
+    let db_path = create_test_db_path(temp_dir.path());
+    let ledger = create_test_ledger_with_db(&db_path);
     let cmd = TweetCommand::new(ledger);
 
     let args = ListArgs {
@@ -133,9 +135,9 @@ fn test_ndjson_output_format() {
 fn test_field_projection() {
     use xcom_rs::tweets::{ListArgs, TweetFields};
 
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-    let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+    let temp_dir = create_test_dir("tweets-projection");
+    let db_path = create_test_db_path(temp_dir.path());
+    let ledger = create_test_ledger_with_db(&db_path);
     let cmd = TweetCommand::new(ledger);
 
     let args = ListArgs {
