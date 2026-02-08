@@ -88,7 +88,7 @@ fn main() {
         AuthStore::new()
     });
 
-    let result = match cli.command {
+    let result = match cli.command.unwrap_or(Commands::Commands) {
         Commands::Commands => {
             tracing::info!("Executing commands command");
             let commands = CommandsList::new();

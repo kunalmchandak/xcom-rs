@@ -33,7 +33,7 @@ pub struct Cli {
     pub dry_run: bool,
 
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn test_cli_parsing() {
         let cli = Cli::parse_from(["xcom-rs", "commands"]);
-        assert!(matches!(cli.command, Commands::Commands));
+        assert!(matches!(cli.command, Some(Commands::Commands)));
     }
 
     #[test]
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn test_schema_command() {
         let cli = Cli::parse_from(["xcom-rs", "schema", "--command", "commands"]);
-        if let Commands::Schema { command, .. } = cli.command {
+        if let Some(Commands::Schema { command, .. }) = cli.command {
             assert_eq!(command, "commands");
         } else {
             panic!("Expected Schema command");
@@ -181,10 +181,16 @@ mod tests {
     #[test]
     fn test_help_command() {
         let cli = Cli::parse_from(["xcom-rs", "help", "commands"]);
-        if let Commands::Help { command } = cli.command {
+        if let Some(Commands::Help { command }) = cli.command {
             assert_eq!(command, "commands");
         } else {
             panic!("Expected Help command");
         }
+    }
+
+    #[test]
+    fn test_cli_without_subcommand() {
+        let cli = Cli::parse_from(["xcom-rs"]);
+        assert!(cli.command.is_none());
     }
 }
