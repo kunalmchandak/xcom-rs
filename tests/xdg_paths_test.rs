@@ -3,18 +3,18 @@
 use std::process::Command;
 
 #[test]
-fn test_auth_storage_respects_xdg_config_home() {
+fn test_auth_storage_respects_xdg_data_home() {
     // Create a temporary test directory
     let test_dir =
-        std::env::temp_dir().join(format!("xcom-rs-xdg-config-test-{}", std::process::id()));
-    let xdg_config = test_dir.join("config");
-    std::fs::create_dir_all(&xdg_config).expect("Failed to create test directory");
+        std::env::temp_dir().join(format!("xcom-rs-xdg-auth-test-{}", std::process::id()));
+    let xdg_data = test_dir.join("data");
+    std::fs::create_dir_all(&xdg_data).expect("Failed to create test directory");
 
-    // Import some auth data with XDG_CONFIG_HOME set
+    // Import some auth data with XDG_DATA_HOME set
     let test_token_data = "STUB_B64_{\"accessToken\":\"test_token_xdg\",\"tokenType\":\"Bearer\",\"expiresAt\":null,\"scopes\":[\"read\"]}";
     let import_output = Command::new("cargo")
         .env("HOME", &test_dir)
-        .env("XDG_CONFIG_HOME", &xdg_config)
+        .env("XDG_DATA_HOME", &xdg_data)
         .args([
             "run",
             "--",
@@ -29,17 +29,17 @@ fn test_auth_storage_respects_xdg_config_home() {
 
     assert!(import_output.status.success(), "Auth import should succeed");
 
-    // Verify the auth file was created in XDG_CONFIG_HOME
-    let expected_path = xdg_config.join("xcom-rs").join("auth.json");
+    // Verify the auth file was created in XDG_DATA_HOME
+    let expected_path = xdg_data.join("xcom-rs").join("auth.json");
     assert!(
         expected_path.exists(),
-        "Auth file should be created in XDG_CONFIG_HOME/xcom-rs/auth.json"
+        "Auth file should be created in XDG_DATA_HOME/xcom-rs/auth.json"
     );
 
-    // Verify we can read it back with XDG_CONFIG_HOME set
+    // Verify we can read it back with XDG_DATA_HOME set
     let status_output = Command::new("cargo")
         .env("HOME", &test_dir)
-        .env("XDG_CONFIG_HOME", &xdg_config)
+        .env("XDG_DATA_HOME", &xdg_data)
         .args(["run", "--", "auth", "status", "--output", "json"])
         .output()
         .expect("Failed to execute auth status");
@@ -64,7 +64,7 @@ fn test_auth_storage_respects_xdg_config_home() {
 fn test_billing_storage_respects_xdg_data_home() {
     // Create a temporary test directory
     let test_dir =
-        std::env::temp_dir().join(format!("xcom-rs-xdg-data-test-{}", std::process::id()));
+        std::env::temp_dir().join(format!("xcom-rs-xdg-billing-test-{}", std::process::id()));
     let xdg_data = test_dir.join("data");
     std::fs::create_dir_all(&xdg_data).expect("Failed to create test directory");
 
@@ -136,11 +136,15 @@ fn test_fallback_to_default_path_without_xdg() {
 
     assert!(import_output.status.success(), "Auth import should succeed");
 
-    // Verify the auth file was created in HOME/.config/xcom-rs/
-    let expected_path = test_dir.join(".config").join("xcom-rs").join("auth.json");
+    // Verify the auth file was created in HOME/.local/share/xcom-rs/
+    let expected_path = test_dir
+        .join(".local")
+        .join("share")
+        .join("xcom-rs")
+        .join("auth.json");
     assert!(
         expected_path.exists(),
-        "Auth file should be created in HOME/.config/xcom-rs/auth.json when XDG_CONFIG_HOME is not set"
+        "Auth file should be created in HOME/.local/share/xcom-rs/auth.json when XDG_DATA_HOME is not set"
     );
 
     // Cleanup

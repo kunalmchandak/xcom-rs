@@ -86,7 +86,7 @@ impl BudgetTracker {
         Ok(tracker)
     }
 
-    /// Get default storage path: respects XDG_DATA_HOME, falls back to ~/.config/xcom-rs/budget.json
+    /// Get default storage path: respects XDG_DATA_HOME, falls back to ~/.local/share/xcom-rs/budget.json
     pub fn default_storage_path() -> Result<PathBuf> {
         let data_dir = if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
             PathBuf::from(xdg_data).join("xcom-rs")
@@ -94,7 +94,10 @@ impl BudgetTracker {
             let home = std::env::var("HOME")
                 .or_else(|_| std::env::var("USERPROFILE"))
                 .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
-            PathBuf::from(home).join(".config").join("xcom-rs")
+            PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("xcom-rs")
         };
         std::fs::create_dir_all(&data_dir)?;
         Ok(data_dir.join("budget.json"))
@@ -422,9 +425,9 @@ mod tests {
 
         assert!(path.is_ok());
         let path = path.unwrap();
-        // Should fall back to ~/.config/xcom-rs/budget.json
+        // Should fall back to ~/.local/share/xcom-rs/budget.json
         assert!(path
             .to_string_lossy()
-            .contains(".config/xcom-rs/budget.json"));
+            .contains(".local/share/xcom-rs/budget.json"));
     }
 }
