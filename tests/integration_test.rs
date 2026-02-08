@@ -1,6 +1,7 @@
 use std::process::Command;
 use xcom_rs::context::{ExecutionContext, ExecutionPolicy};
 use xcom_rs::protocol::ErrorCode;
+use xcom_rs::test_utils::helpers::{assert_error_json, assert_success_json};
 
 #[test]
 fn test_non_interactive_context() {
@@ -63,15 +64,7 @@ fn test_demo_interactive_non_interactive_mode() {
         .expect("Failed to execute command");
 
     // Should exit with code 3 (AuthenticationError)
-    assert_eq!(
-        output.status.code(),
-        Some(3),
-        "Should exit with code 3 for AUTH_REQUIRED"
-    );
-
-    // Parse JSON output
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_error_json(&output, 3);
 
     // Verify error structure
     assert_eq!(json["ok"], false, "ok should be false");
@@ -107,15 +100,7 @@ fn test_demo_interactive_interactive_mode() {
         .expect("Failed to execute command");
 
     // Should exit with code 0 (Success)
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "Should exit with code 0 in interactive mode"
-    );
-
-    // Parse JSON output
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+    let json = assert_success_json(&output);
 
     // Verify success structure
     assert_eq!(json["ok"], true, "ok should be true");
