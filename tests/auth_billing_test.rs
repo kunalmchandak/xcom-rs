@@ -5,7 +5,12 @@ use std::process::Command;
 #[test]
 fn test_auth_status_unauthenticated_fixture() {
     // Task 1: Verify auth status returns authenticated=false and nextSteps for unauthenticated state
+    let test_dir =
+        std::env::temp_dir().join(format!("xcom-rs-auth-status-test-{}", std::process::id()));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+
     let output = Command::new("cargo")
+        .env("HOME", &test_dir)
         .args(["run", "--", "auth", "status", "--output", "json"])
         .output()
         .expect("Failed to execute command");
@@ -29,6 +34,9 @@ fn test_auth_status_unauthenticated_fixture() {
         !json["data"]["nextSteps"].as_array().unwrap().is_empty(),
         "nextSteps should not be empty"
     );
+
+    // Cleanup
+    std::fs::remove_dir_all(&test_dir).ok();
 }
 
 #[test]
@@ -557,8 +565,8 @@ fn test_auth_import_dry_run_fail() {
     // Verify error response
     assert_eq!(json["ok"], false, "ok should be false");
     assert_eq!(
-        json["error"]["code"], "INVALID_ARGUMENT",
-        "error code should be INVALID_ARGUMENT"
+        json["error"]["code"], "invalid_argument",
+        "error code should be invalid_argument"
     );
     assert!(
         json["error"]["message"]
