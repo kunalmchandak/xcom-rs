@@ -81,7 +81,7 @@ impl IdempotencyLedger {
             .as_secs() as i64;
 
         self.conn.execute(
-            "INSERT OR REPLACE INTO tweet_operations 
+            "INSERT OR REPLACE INTO tweet_operations
              (client_request_id, request_hash, tweet_id, status, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params![client_request_id, request_hash, tweet_id, status, now],
