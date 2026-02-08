@@ -19,6 +19,8 @@ pub struct SkillInstallResult {
     pub name: String,
     /// Whether installation succeeded
     pub success: bool,
+    /// Canonical installation path (.agents/skills/<name>/SKILL.md or ~/.agents/skills/<name>/SKILL.md)
+    pub canonical_path: PathBuf,
     /// All installation paths (canonical + agent-specific)
     pub target_paths: Vec<PathBuf>,
     /// Error message if failed
@@ -30,20 +32,27 @@ pub struct SkillInstallResult {
 }
 
 impl SkillInstallResult {
-    pub fn success(name: String, target_paths: Vec<PathBuf>, used_symlink: bool) -> Self {
+    pub fn success(
+        name: String,
+        canonical_path: PathBuf,
+        target_paths: Vec<PathBuf>,
+        used_symlink: bool,
+    ) -> Self {
         Self {
             name,
             success: true,
+            canonical_path,
             target_paths,
             error: None,
             used_symlink: Some(used_symlink),
         }
     }
 
-    pub fn failure(name: String, error: String) -> Self {
+    pub fn failure(name: String, canonical_path: PathBuf, error: String) -> Self {
         Self {
             name,
             success: false,
+            canonical_path,
             target_paths: vec![],
             error: Some(error),
             used_symlink: None,

@@ -327,10 +327,11 @@ impl CommandSchema {
                             "type": "array",
                             "items": {
                                 "type": "object",
-                                "required": ["name", "success", "target_paths"],
+                                "required": ["name", "success", "canonical_path", "target_paths"],
                                 "properties": {
                                     "name": { "type": "string" },
                                     "success": { "type": "boolean" },
+                                    "canonical_path": { "type": "string" },
                                     "target_paths": {
                                         "type": "array",
                                         "items": { "type": "string" }

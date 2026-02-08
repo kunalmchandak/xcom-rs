@@ -52,6 +52,7 @@ pub fn install_skill(skill: &Skill, options: &InstallOptions) -> Result<SkillIns
 
     Ok(SkillInstallResult::success(
         skill.name.clone(),
+        canonical_path,
         target_paths,
         false, // We always use copy for now
     ))

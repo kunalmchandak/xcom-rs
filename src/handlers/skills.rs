@@ -97,8 +97,23 @@ pub fn handle_install_skills(
             }
             Err(e) => {
                 tracing::error!(skill = %skill.name, error = %e, "Failed to install skill");
+                // Compute canonical path even for failures for consistency
+                let canonical_path = if global {
+                    dirs::home_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("~"))
+                        .join(".agents")
+                        .join("skills")
+                        .join(&skill.name)
+                        .join("SKILL.md")
+                } else {
+                    std::path::PathBuf::from(".agents")
+                        .join("skills")
+                        .join(&skill.name)
+                        .join("SKILL.md")
+                };
                 results.push(SkillInstallResult::failure(
                     skill.name.clone(),
+                    canonical_path,
                     e.to_string(),
                 ));
             }
