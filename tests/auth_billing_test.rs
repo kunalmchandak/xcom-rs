@@ -378,7 +378,7 @@ fn test_auth_import_dry_run_create() {
     assert_eq!(json["data"]["dryRun"], true, "dryRun should be true");
 
     // Verify no file was created
-    let auth_file = test_dir.join(".config/xcom-rs/auth.json");
+    let auth_file = test_dir.join(".local/share/xcom-rs/auth.json");
     assert!(
         !auth_file.exists(),
         "Auth file should not be created in dry-run mode"
@@ -449,7 +449,7 @@ fn test_auth_import_dry_run_update() {
     assert_eq!(json["data"]["dryRun"], true, "dryRun should be true");
 
     // Verify the old auth data is still there (not updated)
-    let auth_file = test_dir.join(".config/xcom-rs/auth.json");
+    let auth_file = test_dir.join(".local/share/xcom-rs/auth.json");
     let auth_content = std::fs::read_to_string(&auth_file).expect("Auth file should exist");
     assert!(
         auth_content.contains("old_token"),
@@ -612,7 +612,7 @@ fn test_auth_storage_stable_writes() {
     assert!(import_output.status.success(), "Auth import should succeed");
 
     // Get the file path and its first modification time
-    let auth_file = test_dir.join(".config/xcom-rs/auth.json");
+    let auth_file = test_dir.join(".local/share/xcom-rs/auth.json");
     assert!(auth_file.exists(), "Auth file should exist after import");
 
     let metadata1 = std::fs::metadata(&auth_file).expect("Failed to get file metadata");
