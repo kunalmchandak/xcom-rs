@@ -33,6 +33,17 @@ impl ExecutionContext {
             dry_run,
         }
     }
+}
+
+/// Policy for validating execution constraints
+#[derive(Debug, Clone, Default)]
+pub struct ExecutionPolicy;
+
+impl ExecutionPolicy {
+    /// Create a new execution policy
+    pub fn new() -> Self {
+        Self
+    }
 
     /// Check if authentication is required and return an error if in non-interactive mode
     ///
@@ -42,10 +53,12 @@ impl ExecutionContext {
     ///
     /// # Example
     /// ```
-    /// use xcom_rs::context::ExecutionContext;
+    /// use xcom_rs::context::{ExecutionContext, ExecutionPolicy};
     ///
     /// let ctx = ExecutionContext::new(true, None, None, None, false);
-    /// let error = ctx.check_interaction_required(
+    /// let policy = ExecutionPolicy::new();
+    /// let error = policy.check_interaction_required(
+    ///     &ctx,
     ///     "Authentication required",
     ///     vec!["Run 'xcom-rs auth login' first".to_string()]
     /// );
@@ -54,10 +67,11 @@ impl ExecutionContext {
     /// ```
     pub fn check_interaction_required(
         &self,
+        ctx: &ExecutionContext,
         message: impl Into<String>,
         next_steps: Vec<String>,
     ) -> Option<ErrorDetails> {
-        if self.non_interactive {
+        if ctx.non_interactive {
             Some(ErrorDetails::auth_required(message, next_steps))
         } else {
             None
@@ -65,8 +79,12 @@ impl ExecutionContext {
     }
 
     /// Check if cost exceeds maximum allowed
-    pub fn check_max_cost(&self, cost: &CostEstimate) -> Option<ErrorDetails> {
-        if let Some(max) = self.max_cost_credits {
+    pub fn check_max_cost(
+        &self,
+        ctx: &ExecutionContext,
+        cost: &CostEstimate,
+    ) -> Option<ErrorDetails> {
+        if let Some(max) = ctx.max_cost_credits {
             if cost.credits > max {
                 let mut details = std::collections::HashMap::new();
                 details.insert("cost".to_string(), serde_json::json!(cost.credits));
@@ -87,6 +105,7 @@ impl ExecutionContext {
     /// Check if cost would exceed daily budget
     pub fn check_daily_budget(
         &self,
+        ctx: &ExecutionContext,
         cost: &CostEstimate,
         tracker: &BudgetTracker,
     ) -> Option<ErrorDetails> {
@@ -97,7 +116,7 @@ impl ExecutionContext {
                 "todayUsage".to_string(),
                 serde_json::json!(tracker.today_usage()),
             );
-            if let Some(limit) = self.budget_daily_credits {
+            if let Some(limit) = ctx.budget_daily_credits {
                 details.insert("dailyLimit".to_string(), serde_json::json!(limit));
             }
             return Some(ErrorDetails::with_details(
@@ -125,8 +144,12 @@ mod tests {
     #[test]
     fn test_check_interaction_required_non_interactive() {
         let ctx = ExecutionContext::new(true, None, None, None, false);
-        let error =
-            ctx.check_interaction_required("Auth required", vec!["Run login command".to_string()]);
+        let policy = ExecutionPolicy::new();
+        let error = policy.check_interaction_required(
+            &ctx,
+            "Auth required",
+            vec!["Run login command".to_string()],
+        );
         assert!(error.is_some());
         let err = error.unwrap();
         assert_eq!(err.code, ErrorCode::AuthRequired);
@@ -137,24 +160,30 @@ mod tests {
     #[test]
     fn test_check_interaction_required_interactive() {
         let ctx = ExecutionContext::new(false, None, None, None, false);
-        let error =
-            ctx.check_interaction_required("Auth required", vec!["Run login command".to_string()]);
+        let policy = ExecutionPolicy::new();
+        let error = policy.check_interaction_required(
+            &ctx,
+            "Auth required",
+            vec!["Run login command".to_string()],
+        );
         assert!(error.is_none());
     }
 
     #[test]
     fn test_check_max_cost_within_limit() {
         let ctx = ExecutionContext::new(false, None, Some(100), None, false);
+        let policy = ExecutionPolicy::new();
         let cost = CostEstimate::new(50, 0.05);
-        let error = ctx.check_max_cost(&cost);
+        let error = policy.check_max_cost(&ctx, &cost);
         assert!(error.is_none());
     }
 
     #[test]
     fn test_check_max_cost_exceeds_limit() {
         let ctx = ExecutionContext::new(false, None, Some(100), None, false);
+        let policy = ExecutionPolicy::new();
         let cost = CostEstimate::new(101, 0.101);
-        let error = ctx.check_max_cost(&cost);
+        let error = policy.check_max_cost(&ctx, &cost);
         assert!(error.is_some());
         let err = error.unwrap();
         assert_eq!(err.code, ErrorCode::CostLimitExceeded);
@@ -163,18 +192,20 @@ mod tests {
     #[test]
     fn test_check_daily_budget_within_limit() {
         let ctx = ExecutionContext::new(false, None, None, Some(100), false);
+        let policy = ExecutionPolicy::new();
         let tracker = BudgetTracker::new(Some(100));
         let cost = CostEstimate::new(50, 0.05);
-        let error = ctx.check_daily_budget(&cost, &tracker);
+        let error = policy.check_daily_budget(&ctx, &cost, &tracker);
         assert!(error.is_none());
     }
 
     #[test]
     fn test_check_daily_budget_exceeds_limit() {
         let ctx = ExecutionContext::new(false, None, None, Some(100), false);
+        let policy = ExecutionPolicy::new();
         let tracker = BudgetTracker::new(Some(100));
         let cost = CostEstimate::new(101, 0.101);
-        let error = ctx.check_daily_budget(&cost, &tracker);
+        let error = policy.check_daily_budget(&ctx, &cost, &tracker);
         assert!(error.is_some());
         let err = error.unwrap();
         assert_eq!(err.code, ErrorCode::DailyBudgetExceeded);
