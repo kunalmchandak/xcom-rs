@@ -105,14 +105,21 @@ impl BudgetTracker {
     }
 
     /// Get today's date as a string (YYYY-MM-DD)
+    /// Returns a default value if system time is invalid
     fn today() -> String {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let days = now / 86400;
-        // Format as YYYY-MM-DD
-        format!("day-{}", days)
+        match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            Ok(duration) => {
+                let now = duration.as_secs();
+                let days = now / 86400;
+                // Format as YYYY-MM-DD
+                format!("day-{}", days)
+            }
+            Err(_) => {
+                // System time is before UNIX_EPOCH - use a fallback value
+                // This should never happen in practice, but we handle it gracefully
+                "day-0".to_string()
+            }
+        }
     }
 
     /// Check if an operation would exceed daily budget

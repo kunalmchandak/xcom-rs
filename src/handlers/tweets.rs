@@ -15,7 +15,8 @@ pub fn handle_tweets(
     create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,
     output_format: OutputFormat,
 ) -> Result<()> {
-    let ledger = IdempotencyLedger::new(None).expect("Failed to initialize idempotency ledger");
+    let ledger = IdempotencyLedger::new(None)
+        .map_err(|e| anyhow::anyhow!("Failed to initialize idempotency ledger: {}", e))?;
     let tweet_cmd = TweetCommand::new(ledger);
 
     match command {

@@ -109,3 +109,112 @@ fn test_demo_interactive_interactive_mode() {
         "Should have confirmed field"
     );
 }
+
+#[test]
+fn test_invalid_log_format() {
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
+
+    // Test with invalid --log-format value
+    let output = Command::new(bin_path)
+        .args(["--log-format", "invalid", "commands"])
+        .output()
+        .expect("Failed to execute command");
+
+    // Should exit with code 2 (InvalidArgument)
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Should exit with code 2 for invalid argument"
+    );
+
+    // Parse JSON output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+
+    // Verify error structure
+    assert_eq!(json["ok"], false, "ok should be false");
+    assert_eq!(
+        json["error"]["code"], "invalid_argument",
+        "Should return invalid_argument error"
+    );
+
+    // Verify error message contains the invalid value
+    let message = json["error"]["message"]
+        .as_str()
+        .expect("message should be a string");
+    assert!(
+        message.contains("invalid") || message.contains("Invalid"),
+        "Error message should mention the invalid value"
+    );
+}
+
+#[test]
+fn test_valid_log_format_json() {
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
+
+    // Test with valid --log-format=json (need --output=json to get JSON on stdout)
+    let output = Command::new(bin_path)
+        .args(["--log-format", "json", "--output", "json", "commands"])
+        .output()
+        .expect("Failed to execute command");
+
+    // Should exit with code 0 (Success)
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "Should exit with code 0 for valid log format"
+    );
+
+    // Parse JSON output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+
+    // Verify success structure
+    assert_eq!(json["ok"], true, "ok should be true");
+
+    // Verify logs are in JSON format on stderr
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // JSON logs should have structured format like {"timestamp":"...","level":"..."}
+    // If stderr is not empty, it should be valid JSON lines
+    if !stderr.trim().is_empty() {
+        for line in stderr.lines() {
+            if !line.trim().is_empty() {
+                assert!(
+                    serde_json::from_str::<serde_json::Value>(line).is_ok(),
+                    "Stderr should contain valid JSON when --log-format=json"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_valid_log_format_text() {
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
+
+    // Test with valid --log-format=text (need --output=json to get JSON on stdout)
+    let output = Command::new(bin_path)
+        .args(["--log-format", "text", "--output", "json", "commands"])
+        .output()
+        .expect("Failed to execute command");
+
+    // Should exit with code 0 (Success)
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "Should exit with code 0 for valid log format"
+    );
+
+    // Parse JSON output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should return valid JSON");
+
+    // Verify success structure
+    assert_eq!(json["ok"], true, "ok should be true");
+
+    // With text format, stderr should be plain text (not JSON)
+    // We just verify it doesn't crash
+}

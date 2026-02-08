@@ -1,6 +1,8 @@
-# cli-robustness Specification Delta
+# cli-robustness Specification
 
-## MODIFIED Requirements
+## Purpose
+TBD - created by archiving change eliminate-cli-panics. Update Purpose after archive.
+## Requirements
 ### Requirement: 本番コードのパニック排除
 `xcom-rs` の本番実行パスは `unwrap` / `expect` によるパニックを起こしてはならない（MUST NOT）。
 
@@ -9,3 +11,4 @@
 - **When** CLI がエラーを返すとき
 - **Then** パニックせず、`Envelope` 形式のエラーが出力される
 - **And** 適切な終了コードが返される
+

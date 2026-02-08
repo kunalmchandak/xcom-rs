@@ -9,12 +9,16 @@ pub enum LogFormat {
 }
 
 impl FromStr for LogFormat {
-    type Err = std::convert::Infallible;
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "json" => Ok(LogFormat::Json),
-            _ => Ok(LogFormat::Text),
+            "text" => Ok(LogFormat::Text),
+            _ => Err(format!(
+                "Invalid log format '{}'. Valid values: json, text",
+                s
+            )),
         }
     }
 }
@@ -62,6 +66,8 @@ mod tests {
         assert_eq!(LogFormat::from_str("json").unwrap(), LogFormat::Json);
         assert_eq!(LogFormat::from_str("JSON").unwrap(), LogFormat::Json);
         assert_eq!(LogFormat::from_str("text").unwrap(), LogFormat::Text);
-        assert_eq!(LogFormat::from_str("anything").unwrap(), LogFormat::Text);
+        assert_eq!(LogFormat::from_str("TEXT").unwrap(), LogFormat::Text);
+        assert!(LogFormat::from_str("anything").is_err());
+        assert!(LogFormat::from_str("invalid").is_err());
     }
 }
