@@ -22,3 +22,10 @@
 
 ## Future Work
 - GitHub Actions 上での再実行結果の確認（外部システム依存のため手動）
+
+## Acceptance #1 Failure Follow-up
+- [x] `.github/workflows/ci.yml:98` で `security` ジョブ全体が `continue-on-error: true` になっており、脆弱性検出時も CI を失敗にできません。ジョブ全体の許容をやめ、外部要因（JSON 取得失敗など）だけを警告化する実装に変更し、脆弱性検出時は CI を失敗させてください。
+   - 完了: `cargo-audit` を直接実行し、終了コードで判定する実装に変更
+   - 終了コード 0: 脆弱性なし（成功）
+   - 終了コード 1: 脆弱性検出（CI 失敗）
+   - その他のコード: ツール/ネットワークエラー（警告のみ、CI は継続）
