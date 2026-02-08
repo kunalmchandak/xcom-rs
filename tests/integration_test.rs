@@ -1,14 +1,16 @@
 use std::process::Command;
-use xcom_rs::context::ExecutionContext;
+use xcom_rs::context::{ExecutionContext, ExecutionPolicy};
 use xcom_rs::protocol::ErrorCode;
 
 #[test]
 fn test_non_interactive_context() {
     // Test that ExecutionContext properly handles non-interactive mode
     let ctx = ExecutionContext::new(true, Some("trace-test".to_string()), None, None, false);
+    let policy = ExecutionPolicy::new();
 
     // Simulate a command that needs interaction
-    let error = ctx.check_interaction_required(
+    let error = policy.check_interaction_required(
+        &ctx,
         "Authentication credentials needed",
         vec![
             "Run 'xcom-rs auth login' to authenticate".to_string(),
@@ -34,9 +36,11 @@ fn test_non_interactive_context() {
 fn test_interactive_context() {
     // Test that ExecutionContext allows interaction in interactive mode
     let ctx = ExecutionContext::new(false, None, None, None, false);
+    let policy = ExecutionPolicy::new();
 
     // Simulate a command that needs interaction
-    let error = ctx.check_interaction_required(
+    let error = policy.check_interaction_required(
+        &ctx,
         "Authentication credentials needed",
         vec!["Run 'xcom-rs auth login' to authenticate".to_string()],
     );

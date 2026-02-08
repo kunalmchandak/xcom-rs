@@ -1,7 +1,7 @@
 use crate::{
     billing::{BillingEstimate, BudgetTracker, CostEstimate, CostEstimator},
     cli::BillingCommands,
-    context::ExecutionContext,
+    context::{ExecutionContext, ExecutionPolicy},
     output::{print_envelope, OutputFormat},
     protocol::Envelope,
 };
@@ -46,6 +46,7 @@ fn handle_estimate(
     output_format: OutputFormat,
 ) -> Result<()> {
     tracing::info!(operation = %operation, "Executing billing estimate command");
+    let policy = ExecutionPolicy::new();
     let mut params = HashMap::new();
     if let Some(text_val) = text {
         params.insert("text".to_string(), text_val);
@@ -57,7 +58,7 @@ fn handle_estimate(
         estimator.estimate(&operation, &params)
     };
 
-    if let Some(error) = ctx.check_max_cost(&cost) {
+    if let Some(error) = policy.check_max_cost(ctx, &cost) {
         let envelope = if let Some(meta) = create_meta() {
             Envelope::<()>::error_with_meta("error", error, meta)
         } else {
@@ -67,7 +68,7 @@ fn handle_estimate(
         std::process::exit(crate::protocol::ExitCode::OperationFailed.into());
     }
 
-    if let Some(error) = ctx.check_daily_budget(&cost, &budget_tracker) {
+    if let Some(error) = policy.check_daily_budget(ctx, &cost, &budget_tracker) {
         let envelope = if let Some(meta) = create_meta() {
             Envelope::<()>::error_with_meta("error", error, meta)
         } else {

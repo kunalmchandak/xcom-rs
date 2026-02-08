@@ -1,5 +1,5 @@
 use crate::{
-    context::ExecutionContext,
+    context::{ExecutionContext, ExecutionPolicy},
     output::{print_envelope, OutputFormat},
     protocol::{Envelope, ExitCode},
 };
@@ -12,8 +12,10 @@ pub fn handle_demo_interactive(
     output_format: OutputFormat,
 ) -> Result<()> {
     tracing::info!("Executing demo-interactive command");
+    let policy = ExecutionPolicy::new();
 
-    if let Some(error) = ctx.check_interaction_required(
+    if let Some(error) = policy.check_interaction_required(
+        ctx,
         "This command requires user confirmation",
         vec![
             "Run with interactive mode enabled (remove --non-interactive flag)".to_string(),
