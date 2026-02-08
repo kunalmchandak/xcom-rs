@@ -10,7 +10,7 @@ use xcom_rs::{
     introspection::{CommandHelp, CommandSchema, CommandsList},
     logging::{init_logging, LogFormat},
     output::{print_envelope, print_ndjson, OutputFormat},
-    protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
+    protocol::{Envelope, ErrorCode, ExitCode},
     tweets::{
         ClassifiedError, CreateArgs, IdempotencyConflictError, IdempotencyLedger, IfExistsPolicy,
         ListArgs, TweetCommand, TweetFields,
@@ -34,7 +34,7 @@ fn main() {
                     _ => (ErrorCode::InvalidArgument, ExitCode::InvalidArgument),
                 };
 
-                let error = ErrorDetails::new(error_code, e.to_string());
+                let error = ErrorResponder::error(error_code, e.to_string());
                 ErrorResponder::emit(error, OutputFormat::Json, None, exit_code);
             }
         },
@@ -46,7 +46,7 @@ fn main() {
     let output_format = match OutputFormat::from_str(&cli.output) {
         Ok(fmt) => fmt,
         Err(e) => {
-            let error = ErrorDetails::new(ErrorCode::InvalidArgument, e.to_string());
+            let error = ErrorResponder::error(ErrorCode::InvalidArgument, e.to_string());
             let meta = ErrorResponder::create_meta(cli.trace_id.as_ref());
             ErrorResponder::emit(error, OutputFormat::Json, meta, ExitCode::InvalidArgument);
         }
@@ -163,8 +163,15 @@ fn main() {
 
                     let if_exists_policy =
                         IfExistsPolicy::from_str(&if_exists).unwrap_or_else(|e| {
-                            eprintln!("Invalid if-exists policy: {}", e);
-                            std::process::exit(ExitCode::InvalidArgument.into());
+                            let error =
+                                ErrorResponder::error(ErrorCode::InvalidArgument, e.to_string());
+                            let meta = create_meta();
+                            ErrorResponder::emit(
+                                error,
+                                output_format,
+                                meta,
+                                ExitCode::InvalidArgument,
+                            );
                         });
 
                     let args = CreateArgs {
@@ -184,19 +191,19 @@ fn main() {
                         }
                         Err(e) => {
                             let error = if e.downcast_ref::<IdempotencyConflictError>().is_some() {
-                                ErrorDetails::new(ErrorCode::IdempotencyConflict, e.to_string())
+                                ErrorResponder::error(ErrorCode::IdempotencyConflict, e.to_string())
                             } else if let Some(classified) = e.downcast_ref::<ClassifiedError>() {
                                 if let Some(retry_after_ms) = classified.retry_after_ms {
-                                    ErrorDetails::with_retry_after(
+                                    ErrorResponder::error_with_retry(
                                         classified.to_error_code(),
                                         e.to_string(),
                                         retry_after_ms,
                                     )
                                 } else {
-                                    ErrorDetails::new(classified.to_error_code(), e.to_string())
+                                    ErrorResponder::error(classified.to_error_code(), e.to_string())
                                 }
                             } else {
-                                ErrorDetails::new(ErrorCode::InternalError, e.to_string())
+                                ErrorResponder::error(ErrorCode::InternalError, e.to_string())
                             };
 
                             let meta = create_meta();
@@ -245,20 +252,21 @@ fn main() {
                             }
                         }
                         Err(e) => {
-                            let error =
-                                if let Some(classified) = e.downcast_ref::<ClassifiedError>() {
-                                    if let Some(retry_after_ms) = classified.retry_after_ms {
-                                        ErrorDetails::with_retry_after(
-                                            classified.to_error_code(),
-                                            e.to_string(),
-                                            retry_after_ms,
-                                        )
-                                    } else {
-                                        ErrorDetails::new(classified.to_error_code(), e.to_string())
-                                    }
+                            let error = if let Some(classified) =
+                                e.downcast_ref::<ClassifiedError>()
+                            {
+                                if let Some(retry_after_ms) = classified.retry_after_ms {
+                                    ErrorResponder::error_with_retry(
+                                        classified.to_error_code(),
+                                        e.to_string(),
+                                        retry_after_ms,
+                                    )
                                 } else {
-                                    ErrorDetails::new(ErrorCode::InternalError, e.to_string())
-                                };
+                                    ErrorResponder::error(classified.to_error_code(), e.to_string())
+                                }
+                            } else {
+                                ErrorResponder::error(ErrorCode::InternalError, e.to_string())
+                            };
 
                             let meta = create_meta();
                             ErrorResponder::emit(
@@ -302,7 +310,7 @@ fn main() {
                             print_envelope(&envelope, output_format)
                         }
                         Err(e) => {
-                            let error = ErrorDetails::auth_required(
+                            let error = ErrorResponder::auth_required_error(
                                 e.to_string(),
                                 vec![
                                     "Authenticate first by running 'xcom-rs auth login'"
@@ -327,7 +335,7 @@ fn main() {
                         Ok(plan) => {
                             // Check if the plan indicates failure
                             if plan.action == xcom_rs::auth::ImportAction::Fail {
-                                let error = ErrorDetails::new(
+                                let error = ErrorResponder::error(
                                     ErrorCode::InvalidArgument,
                                     plan.reason.unwrap_or_else(|| "Import failed".to_string()),
                                 );
@@ -361,7 +369,7 @@ fn main() {
                         }
                         Err(e) => {
                             let error =
-                                ErrorDetails::new(ErrorCode::InvalidArgument, e.to_string());
+                                ErrorResponder::error(ErrorCode::InvalidArgument, e.to_string());
                             let meta = create_meta();
                             ErrorResponder::emit(
                                 error,
@@ -482,7 +490,7 @@ fn main() {
                     let mut details = std::collections::HashMap::new();
                     details.insert("nextSteps".to_string(), serde_json::json!(next_steps));
 
-                    let error = ErrorDetails::with_details(
+                    let error = ErrorResponder::error_with_details(
                         ErrorCode::InternalError,
                         format!("Failed to collect diagnostics: {}", e),
                         details,
@@ -501,7 +509,7 @@ fn main() {
         }
         Err(e) => {
             tracing::error!(error = %e, "Command failed");
-            let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
+            let error = ErrorResponder::error(ErrorCode::InternalError, e.to_string());
             let meta = create_meta();
             ErrorResponder::emit(error, output_format, meta, ExitCode::OperationFailed);
         }

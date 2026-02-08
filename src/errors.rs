@@ -1,6 +1,6 @@
 use crate::{
     output::{print_envelope, OutputFormat},
-    protocol::{Envelope, ErrorDetails, ExitCode},
+    protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
 };
 use std::collections::HashMap;
 
@@ -37,6 +37,37 @@ impl ErrorResponder {
             m
         })
     }
+
+    /// Create a simple error with code and message
+    pub fn error(code: ErrorCode, message: impl Into<String>) -> ErrorDetails {
+        ErrorDetails::new(code, message)
+    }
+
+    /// Create an error with retry_after_ms
+    pub fn error_with_retry(
+        code: ErrorCode,
+        message: impl Into<String>,
+        retry_after_ms: u64,
+    ) -> ErrorDetails {
+        ErrorDetails::with_retry_after(code, message, retry_after_ms)
+    }
+
+    /// Create an error with additional details
+    pub fn error_with_details(
+        code: ErrorCode,
+        message: impl Into<String>,
+        details: HashMap<String, serde_json::Value>,
+    ) -> ErrorDetails {
+        ErrorDetails::with_details(code, message, details)
+    }
+
+    /// Create an auth required error with next steps
+    pub fn auth_required_error(
+        message: impl Into<String>,
+        next_steps: Vec<String>,
+    ) -> ErrorDetails {
+        ErrorDetails::auth_required(message, next_steps)
+    }
 }
 
 #[cfg(test)]
@@ -56,6 +87,50 @@ mod tests {
     fn test_create_meta_without_trace_id() {
         let meta = ErrorResponder::create_meta(None);
         assert!(meta.is_none());
+    }
+
+    #[test]
+    fn test_error_builder() {
+        let error = ErrorResponder::error(ErrorCode::InvalidArgument, "test message");
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        assert_eq!(error.message, "test message");
+        assert!(!error.is_retryable);
+        assert!(error.retry_after_ms.is_none());
+        assert!(error.details.is_none());
+    }
+
+    #[test]
+    fn test_error_with_retry_builder() {
+        let error =
+            ErrorResponder::error_with_retry(ErrorCode::RateLimitExceeded, "rate limited", 5000);
+        assert_eq!(error.code, ErrorCode::RateLimitExceeded);
+        assert_eq!(error.message, "rate limited");
+        assert!(error.is_retryable);
+        assert_eq!(error.retry_after_ms, Some(5000));
+        assert!(error.details.is_none());
+    }
+
+    #[test]
+    fn test_error_with_details_builder() {
+        let mut details = HashMap::new();
+        details.insert("key".to_string(), serde_json::json!("value"));
+        let error =
+            ErrorResponder::error_with_details(ErrorCode::InternalError, "error", details.clone());
+        assert_eq!(error.code, ErrorCode::InternalError);
+        assert_eq!(error.message, "error");
+        assert!(error.details.is_some());
+        assert_eq!(error.details.unwrap().get("key").unwrap(), "value");
+    }
+
+    #[test]
+    fn test_auth_required_error_builder() {
+        let next_steps = vec!["Run auth login".to_string()];
+        let error = ErrorResponder::auth_required_error("auth needed", next_steps.clone());
+        assert_eq!(error.code, ErrorCode::AuthRequired);
+        assert_eq!(error.message, "auth needed");
+        assert!(error.details.is_some());
+        let details = error.details.unwrap();
+        assert!(details.contains_key("nextSteps"));
     }
 
     // Note: Cannot test emit() as it calls std::process::exit
