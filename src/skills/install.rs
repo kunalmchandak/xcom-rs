@@ -29,7 +29,7 @@ pub fn install_skill(skill: &Skill, options: &InstallOptions) -> Result<SkillIns
     );
 
     // Create agent-specific paths if requested
-    let mut agent_paths = Vec::new();
+    let mut target_paths = vec![canonical_path.clone()];
     if let Some(agent_name) = &options.agent {
         let agent_specific_paths = resolve_agent_paths(&skill.name, agent_name, options.global)?;
         for agent_path in agent_specific_paths {
@@ -46,14 +46,13 @@ pub fn install_skill(skill: &Skill, options: &InstallOptions) -> Result<SkillIns
                 fs::copy(&canonical_path, &agent_path)
                     .context("Failed to copy to agent-specific location")?;
             }
-            agent_paths.push(agent_path);
+            target_paths.push(agent_path);
         }
     }
 
     Ok(SkillInstallResult::success(
         skill.name.clone(),
-        canonical_path,
-        agent_paths,
+        target_paths,
         false, // We always use copy for now
     ))
 }
@@ -164,9 +163,9 @@ mod tests {
         std::env::set_current_dir(original_dir).unwrap();
 
         assert!(result.success);
-        assert_eq!(result.skill, "test-skill");
-        assert!(result
-            .canonical_path
+        assert_eq!(result.name, "test-skill");
+        assert_eq!(result.target_paths.len(), 1);
+        assert!(result.target_paths[0]
             .to_string_lossy()
             .contains("test-skill"));
     }

@@ -72,23 +72,14 @@ pub fn handle_install_skills(
     }
 
     // Check for interactive requirement
-    if !yes && !ctx.non_interactive {
-        tracing::info!("Interactive confirmation would be required (--yes not specified)");
-        // In non-interactive mode, this would fail, but for now we proceed
-    }
+    // In non-interactive mode, auto-confirm (treat as --yes)
+    // Otherwise, if --yes is not specified, would require interactive confirmation
+    let auto_confirm = yes || ctx.non_interactive;
 
-    if ctx.non_interactive && !yes {
-        let error = ErrorDetails::new(
-            ErrorCode::InteractionRequired,
-            "Interactive confirmation required but --non-interactive mode is enabled. Use --yes to skip confirmation.".to_string(),
-        );
-        let envelope = if let Some(meta) = create_meta() {
-            Envelope::<()>::error_with_meta("install-skills", error, meta)
-        } else {
-            Envelope::<()>::error("install-skills", error)
-        };
-        print_envelope(&envelope, output_format)?;
-        return Err(anyhow::anyhow!("Interaction required"));
+    if !auto_confirm {
+        tracing::info!("Interactive confirmation would be required (--yes not specified and not in non-interactive mode)");
+        // In a real interactive scenario, we would prompt here
+        // For now, we treat missing --yes in interactive mode as implicit confirmation
     }
 
     // Install skills
