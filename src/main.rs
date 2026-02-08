@@ -4,7 +4,7 @@ use xcom_rs::{
     auth::AuthStore,
     billing::{BillingEstimate, BudgetTracker, CostEstimate, CostEstimator},
     cli::{AuthCommands, BillingCommands, Cli, Commands, TweetsCommands},
-    context::ExecutionContext,
+    context::{ExecutionContext, ExecutionPolicy},
     doctor,
     introspection::{CommandHelp, CommandSchema, CommandsList},
     logging::{init_logging, LogFormat},
@@ -89,6 +89,8 @@ fn main() {
         tracing::info!("Running in non-interactive mode");
     }
 
+    let policy = ExecutionPolicy::new();
+
     let mut auth_store = AuthStore::with_default_storage().unwrap_or_else(|e| {
         tracing::warn!(error = %e, "Failed to create persistent auth store, using in-memory store");
         AuthStore::new()
@@ -131,7 +133,8 @@ fn main() {
         Commands::DemoInteractive => {
             tracing::info!("Executing demo-interactive command");
 
-            if let Some(error) = ctx.check_interaction_required(
+            if let Some(error) = policy.check_interaction_required(
+                &ctx,
                 "This command requires user confirmation",
                 vec![
                     "Run with interactive mode enabled (remove --non-interactive flag)".to_string(),
@@ -414,7 +417,7 @@ fn main() {
                         estimator.estimate(&operation, &params)
                     };
 
-                    if let Some(error) = ctx.check_max_cost(&cost) {
+                    if let Some(error) = policy.check_max_cost(&ctx, &cost) {
                         let envelope = if let Some(meta) = create_meta() {
                             Envelope::<()>::error_with_meta("error", error, meta)
                         } else {
@@ -424,7 +427,7 @@ fn main() {
                         std::process::exit(ExitCode::OperationFailed.into());
                     }
 
-                    if let Some(error) = ctx.check_daily_budget(&cost, &budget_tracker) {
+                    if let Some(error) = policy.check_daily_budget(&ctx, &cost, &budget_tracker) {
                         let envelope = if let Some(meta) = create_meta() {
                             Envelope::<()>::error_with_meta("error", error, meta)
                         } else {
