@@ -35,7 +35,15 @@ fn main() {
         },
     };
 
-    let log_format = LogFormat::from_str(&cli.log_format).unwrap();
+    let log_format = match LogFormat::from_str(&cli.log_format) {
+        Ok(fmt) => fmt,
+        Err(e) => {
+            let error = ErrorDetails::new(ErrorCode::InvalidArgument, e.to_string());
+            let envelope = Envelope::<()>::error("error", error);
+            let _ = print_envelope(&envelope, OutputFormat::Json);
+            std::process::exit(ExitCode::InvalidArgument.into());
+        }
+    };
     init_logging(log_format, cli.trace_id.clone());
 
     let output_format = match OutputFormat::from_str(&cli.output) {
@@ -65,11 +73,14 @@ fn main() {
         })
     };
 
-    // If no subcommand is provided, show help and exit successfully
-    if cli.command.is_none() {
-        let _ = Cli::command().print_help();
-        std::process::exit(ExitCode::Success.into());
-    }
+    let command = match cli.command {
+        Some(cmd) => cmd,
+        None => {
+            // No subcommand provided, show help and exit successfully
+            let _ = Cli::command().print_help();
+            std::process::exit(ExitCode::Success.into());
+        }
+    };
 
     let ctx = ExecutionContext::new(
         cli.non_interactive,
@@ -88,10 +99,7 @@ fn main() {
         AuthStore::new()
     });
 
-    let result = match cli
-        .command
-        .expect("Command should be present after None check")
-    {
+    let result = match command {
         Commands::Commands => handlers::introspection::handle_commands(&create_meta, output_format),
         Commands::Schema { command } => {
             handlers::introspection::handle_schema(&command, &create_meta, output_format)
