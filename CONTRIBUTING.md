@@ -64,10 +64,38 @@ xcom-rs/
 │   └── setup               # Development environment setup
 ├── src/
 │   ├── main.rs             # CLI entry point
-│   └── lib.rs              # Library code with tests
+│   ├── lib.rs              # Library code with tests
+│   ├── cli.rs              # CLI argument parsing
+│   ├── context.rs          # Execution context
+│   ├── output.rs           # Output formatting
+│   ├── protocol.rs         # Protocol definitions
+│   ├── auth/               # Authentication module
+│   │   ├── mod.rs          # Module exports
+│   │   ├── models.rs       # Auth data models
+│   │   └── storage.rs      # Auth storage & persistence
+│   ├── billing/            # Billing and cost tracking module
+│   │   ├── mod.rs          # Module exports
+│   │   ├── models.rs       # Billing data models
+│   │   └── storage.rs      # Budget tracking & cost estimation
+│   └── tweets/             # Tweets operations module
+│       ├── mod.rs          # Module exports
+│       ├── models.rs       # Tweet data models
+│       ├── commands.rs     # Tweet command operations
+│       └── ledger.rs       # Idempotency ledger storage
 ├── Cargo.toml              # Project manifest
 ├── Makefile                # Build and development tasks
 ├── .pre-commit-config.yaml # Pre-commit hooks configuration
 ├── README.md               # User-facing project overview
 └── CONTRIBUTING.md         # Developer guide
 ```
+
+### Module Organization
+
+Each domain module (`auth`, `billing`, `tweets`) follows a consistent structure:
+
+- `mod.rs` - Public API and re-exports
+- `models.rs` - Data structures and types
+- `storage.rs` or `ledger.rs` - Persistence and storage logic
+- `commands.rs` - Business logic and operations (when applicable)
+
+This organization keeps related functionality together while maintaining clear separation of concerns.

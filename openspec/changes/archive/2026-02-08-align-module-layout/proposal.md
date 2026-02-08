@@ -1,5 +1,13 @@
 # align-module-layout Proposal
 
+## Why
+The `tweets` module follows a clear separation pattern with `commands/models/ledger`, but other modules (`auth`, `billing`) do not follow the same structure. This inconsistency makes it harder for developers to navigate the codebase and understand module boundaries.
+
+## What Changes
+- Refactor `auth` and `billing` modules to follow the `tweets` pattern
+- Maintain existing functionality during restructuring
+- Update documentation to reflect the unified module layout
+
 ## 背景
 `tweets` モジュールは `commands/models/ledger` に分割されていますが、他のモジュール（`auth`, `billing`）は同様のパターンに従っていません。
 
