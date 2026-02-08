@@ -3,6 +3,7 @@ pub mod billing;
 pub mod cli;
 pub mod context;
 pub mod doctor;
+pub mod errors;
 pub mod handlers;
 pub mod introspection;
 pub mod logging;
