@@ -77,6 +77,25 @@ pub enum Commands {
 
     /// Diagnostic information about configuration and runtime state
     Doctor,
+
+    /// Install skills from embedded repository
+    InstallSkills {
+        /// Specific skill name to install (installs all if not specified)
+        #[arg(long)]
+        skill: Option<String>,
+
+        /// Target agent (claude or opencode)
+        #[arg(long)]
+        agent: Option<String>,
+
+        /// Install to global location instead of project
+        #[arg(long)]
+        global: bool,
+
+        /// Skip confirmation prompts
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

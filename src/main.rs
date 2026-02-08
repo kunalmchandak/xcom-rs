@@ -106,6 +106,20 @@ fn main() {
         Commands::Doctor => {
             handlers::doctor::handle_doctor(&auth_store, &ctx, &create_meta, output_format)
         }
+        Commands::InstallSkills {
+            skill,
+            agent,
+            global,
+            yes,
+        } => handlers::skills::handle_install_skills(
+            skill.as_deref(),
+            agent.as_deref(),
+            global,
+            yes,
+            &ctx,
+            &create_meta,
+            output_format,
+        ),
     };
 
     match result {

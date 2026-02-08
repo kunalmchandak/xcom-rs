@@ -83,6 +83,45 @@ impl CommandsList {
                     risk: RiskLevel::Low,
                     has_cost: false,
                 },
+                CommandInfo {
+                    name: "install-skills".to_string(),
+                    description: "Install skills from embedded repository".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "skill".to_string(),
+                            description:
+                                "Specific skill name to install (installs all if not specified)"
+                                    .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "agent".to_string(),
+                            description: "Target agent (claude or opencode)".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "global".to_string(),
+                            description: "Install to global location instead of project"
+                                .to_string(),
+                            required: false,
+                            arg_type: "boolean".to_string(),
+                            default: Some("false".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "yes".to_string(),
+                            description: "Skip confirmation prompts".to_string(),
+                            required: false,
+                            arg_type: "boolean".to_string(),
+                            default: Some("false".to_string()),
+                        },
+                    ],
+                    risk: RiskLevel::Low,
+                    has_cost: false,
+                },
             ],
         }
     }
@@ -265,6 +304,43 @@ impl CommandSchema {
                     "properties": {
                         "message": { "type": "string" },
                         "confirmed": { "type": "boolean" }
+                    }
+                })),
+            },
+            "install-skills" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "skill": { "type": "string" },
+                        "agent": { "type": "string", "enum": ["claude", "opencode"] },
+                        "global": { "type": "boolean", "default": false },
+                        "yes": { "type": "boolean", "default": false }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["installed_skills"],
+                    "properties": {
+                        "installed_skills": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["skill", "success", "canonical_path"],
+                                "properties": {
+                                    "skill": { "type": "string" },
+                                    "success": { "type": "boolean" },
+                                    "canonical_path": { "type": "string" },
+                                    "agent_paths": {
+                                        "type": "array",
+                                        "items": { "type": "string" }
+                                    },
+                                    "error": { "type": "string" },
+                                    "used_symlink": { "type": "boolean" }
+                                }
+                            }
+                        }
                     }
                 })),
             },
@@ -454,8 +530,8 @@ impl CommandHelp {
                         .to_string(),
                 usage: "xcom-rs demo-interactive [--non-interactive] [--output json|yaml|text]"
                     .to_string(),
-                exit_codes,
-                error_vocabulary,
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
                 examples: vec![
                     ExampleInfo {
                         description: "Run in interactive mode".to_string(),
@@ -467,6 +543,27 @@ impl CommandHelp {
                                 .to_string(),
                         command: "xcom-rs demo-interactive --non-interactive --output json"
                             .to_string(),
+                    },
+                ],
+            },
+            "install-skills" => Self {
+                command: command.to_string(),
+                description: "Install skills from embedded repository to project or global locations".to_string(),
+                usage: "xcom-rs install-skills [--skill <name>] [--agent <agent>] [--global] [--yes] [--output json|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Install all skills to project scope with JSON output".to_string(),
+                        command: "xcom-rs install-skills --yes --non-interactive --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Install specific skill to global scope for Claude".to_string(),
+                        command: "xcom-rs install-skills --skill example-skill --agent claude --global --yes --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Install all skills to OpenCode project scope".to_string(),
+                        command: "xcom-rs install-skills --agent opencode --yes --output json".to_string(),
                     },
                 ],
             },
