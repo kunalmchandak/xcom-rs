@@ -645,7 +645,8 @@ mod tests {
         let original = std::env::var("XDG_DATA_HOME").ok();
 
         // Set XDG_DATA_HOME
-        std::env::set_var("XDG_DATA_HOME", "/tmp/test-xdg-data");
+        let xdg_path = std::env::temp_dir().join(format!("test-xdg-data-{}", std::process::id()));
+        std::env::set_var("XDG_DATA_HOME", &xdg_path);
 
         let path = AuthStore::default_storage_path();
 
@@ -657,9 +658,7 @@ mod tests {
 
         assert!(path.is_ok());
         let path = path.unwrap();
-        assert!(path
-            .to_string_lossy()
-            .contains("/tmp/test-xdg-data/xcom-rs/auth.json"));
+        assert_eq!(path, xdg_path.join("xcom-rs").join("auth.json"));
     }
 
     #[test]
@@ -683,8 +682,10 @@ mod tests {
         assert!(path.is_ok());
         let path = path.unwrap();
         // Should fall back to ~/.local/share/xcom-rs/auth.json
-        assert!(path
-            .to_string_lossy()
-            .contains(".local/share/xcom-rs/auth.json"));
+        let expected_suffix = std::path::Path::new(".local")
+            .join("share")
+            .join("xcom-rs")
+            .join("auth.json");
+        assert!(path.ends_with(&expected_suffix));
     }
 }
