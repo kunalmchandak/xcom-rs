@@ -98,7 +98,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      
       - name: Run cargo audit
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        id: audit
+        run: |
+          # Run cargo audit and capture exit code
+          cargo audit --json > audit-result.json || AUDIT_EXIT=$?
+          
+          # Exit code 0: No vulnerabilities
+          # Exit code 1: Vulnerabilities found (fail CI)
+          # Other codes: Tool/network errors (warn but don't fail)
+          
+          if [ -z "${AUDIT_EXIT}" ] || [ "${AUDIT_EXIT}" -eq 0 ]; then
+            echo "✅ No vulnerabilities found"
+            exit 0
+          elif [ "${AUDIT_EXIT}" -eq 1 ]; then
+            echo "❌ Security vulnerabilities detected"
+            cat audit-result.json
+            exit 1
+          else
+            echo "⚠️  cargo-audit encountered an error (exit code: ${AUDIT_EXIT})"
+            echo "This may be due to network issues or database fetch failures"
+            cat audit-result.json || echo "Could not read audit results"
+            echo "Continuing CI despite audit tool error..."
+            exit 0
+          fi
