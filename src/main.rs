@@ -6,6 +6,7 @@ use xcom_rs::{
     cli::{AuthCommands, BillingCommands, Cli, Commands, TweetsCommands},
     context::{ExecutionContext, ExecutionPolicy},
     doctor,
+    errors::ErrorResponder,
     introspection::{CommandHelp, CommandSchema, CommandsList},
     logging::{init_logging, LogFormat},
     output::{print_envelope, print_ndjson, OutputFormat},
@@ -34,9 +35,7 @@ fn main() {
                 };
 
                 let error = ErrorDetails::new(error_code, e.to_string());
-                let envelope = Envelope::<()>::error("error", error);
-                let _ = print_envelope(&envelope, OutputFormat::Json);
-                std::process::exit(exit_code.into());
+                ErrorResponder::emit(error, OutputFormat::Json, None, exit_code);
             }
         },
     };
@@ -48,27 +47,13 @@ fn main() {
         Ok(fmt) => fmt,
         Err(e) => {
             let error = ErrorDetails::new(ErrorCode::InvalidArgument, e.to_string());
-            let meta = cli.trace_id.as_ref().map(|trace_id| {
-                let mut m = std::collections::HashMap::new();
-                m.insert("traceId".to_string(), serde_json::json!(trace_id));
-                m
-            });
-            let envelope = if let Some(meta) = meta {
-                Envelope::<()>::error_with_meta("error", error, meta)
-            } else {
-                Envelope::<()>::error("error", error)
-            };
-            let _ = print_envelope(&envelope, OutputFormat::Json);
-            std::process::exit(ExitCode::InvalidArgument.into());
+            let meta = ErrorResponder::create_meta(cli.trace_id.as_ref());
+            ErrorResponder::emit(error, OutputFormat::Json, meta, ExitCode::InvalidArgument);
         }
     };
 
     let create_meta = || -> Option<std::collections::HashMap<String, serde_json::Value>> {
-        cli.trace_id.as_ref().map(|trace_id| {
-            let mut m = std::collections::HashMap::new();
-            m.insert("traceId".to_string(), serde_json::json!(trace_id));
-            m
-        })
+        ErrorResponder::create_meta(cli.trace_id.as_ref())
     };
 
     // If no subcommand is provided, show help and exit successfully
@@ -141,13 +126,8 @@ fn main() {
                     "Or use --yes flag to auto-confirm (not implemented in this demo)".to_string(),
                 ],
             ) {
-                let envelope = if let Some(meta) = create_meta() {
-                    Envelope::<()>::error_with_meta("error", error, meta)
-                } else {
-                    Envelope::<()>::error("error", error)
-                };
-                let _ = print_envelope(&envelope, output_format);
-                std::process::exit(ExitCode::AuthenticationError.into());
+                let meta = create_meta();
+                ErrorResponder::emit(error, output_format, meta, ExitCode::AuthenticationError);
             }
 
             #[derive(serde::Serialize)]
@@ -219,13 +199,13 @@ fn main() {
                                 ErrorDetails::new(ErrorCode::InternalError, e.to_string())
                             };
 
-                            let envelope = if let Some(meta) = create_meta() {
-                                Envelope::<()>::error_with_meta("error", error, meta)
-                            } else {
-                                Envelope::<()>::error("error", error)
-                            };
-                            let _ = print_envelope(&envelope, output_format);
-                            std::process::exit(ExitCode::OperationFailed.into());
+                            let meta = create_meta();
+                            ErrorResponder::emit(
+                                error,
+                                output_format,
+                                meta,
+                                ExitCode::OperationFailed,
+                            );
                         }
                     }
                 }
@@ -280,13 +260,13 @@ fn main() {
                                     ErrorDetails::new(ErrorCode::InternalError, e.to_string())
                                 };
 
-                            let envelope = if let Some(meta) = create_meta() {
-                                Envelope::<()>::error_with_meta("error", error, meta)
-                            } else {
-                                Envelope::<()>::error("error", error)
-                            };
-                            let _ = print_envelope(&envelope, output_format);
-                            std::process::exit(ExitCode::OperationFailed.into());
+                            let meta = create_meta();
+                            ErrorResponder::emit(
+                                error,
+                                output_format,
+                                meta,
+                                ExitCode::OperationFailed,
+                            );
                         }
                     }
                 }
@@ -331,13 +311,13 @@ fn main() {
                                         .to_string(),
                                 ],
                             );
-                            let envelope = if let Some(meta) = create_meta() {
-                                Envelope::<()>::error_with_meta("error", error, meta)
-                            } else {
-                                Envelope::<()>::error("error", error)
-                            };
-                            let _ = print_envelope(&envelope, output_format);
-                            std::process::exit(ExitCode::AuthenticationError.into());
+                            let meta = create_meta();
+                            ErrorResponder::emit(
+                                error,
+                                output_format,
+                                meta,
+                                ExitCode::AuthenticationError,
+                            );
                         }
                     }
                 }
@@ -351,13 +331,13 @@ fn main() {
                                     ErrorCode::InvalidArgument,
                                     plan.reason.unwrap_or_else(|| "Import failed".to_string()),
                                 );
-                                let envelope = if let Some(meta) = create_meta() {
-                                    Envelope::<()>::error_with_meta("error", error, meta)
-                                } else {
-                                    Envelope::<()>::error("error", error)
-                                };
-                                let _ = print_envelope(&envelope, output_format);
-                                std::process::exit(ExitCode::InvalidArgument.into());
+                                let meta = create_meta();
+                                ErrorResponder::emit(
+                                    error,
+                                    output_format,
+                                    meta,
+                                    ExitCode::InvalidArgument,
+                                );
                             }
 
                             // For dry-run, return the plan
@@ -382,13 +362,13 @@ fn main() {
                         Err(e) => {
                             let error =
                                 ErrorDetails::new(ErrorCode::InvalidArgument, e.to_string());
-                            let envelope = if let Some(meta) = create_meta() {
-                                Envelope::<()>::error_with_meta("error", error, meta)
-                            } else {
-                                Envelope::<()>::error("error", error)
-                            };
-                            let _ = print_envelope(&envelope, output_format);
-                            std::process::exit(ExitCode::InvalidArgument.into());
+                            let meta = create_meta();
+                            ErrorResponder::emit(
+                                error,
+                                output_format,
+                                meta,
+                                ExitCode::InvalidArgument,
+                            );
                         }
                     }
                 }
@@ -418,23 +398,13 @@ fn main() {
                     };
 
                     if let Some(error) = policy.check_max_cost(&ctx, &cost) {
-                        let envelope = if let Some(meta) = create_meta() {
-                            Envelope::<()>::error_with_meta("error", error, meta)
-                        } else {
-                            Envelope::<()>::error("error", error)
-                        };
-                        let _ = print_envelope(&envelope, output_format);
-                        std::process::exit(ExitCode::OperationFailed.into());
+                        let meta = create_meta();
+                        ErrorResponder::emit(error, output_format, meta, ExitCode::OperationFailed);
                     }
 
                     if let Some(error) = policy.check_daily_budget(&ctx, &cost, &budget_tracker) {
-                        let envelope = if let Some(meta) = create_meta() {
-                            Envelope::<()>::error_with_meta("error", error, meta)
-                        } else {
-                            Envelope::<()>::error("error", error)
-                        };
-                        let _ = print_envelope(&envelope, output_format);
-                        std::process::exit(ExitCode::OperationFailed.into());
+                        let meta = create_meta();
+                        ErrorResponder::emit(error, output_format, meta, ExitCode::OperationFailed);
                     }
 
                     if !ctx.dry_run {
@@ -517,13 +487,8 @@ fn main() {
                         format!("Failed to collect diagnostics: {}", e),
                         details,
                     );
-                    let envelope = if let Some(meta) = create_meta() {
-                        Envelope::<()>::error_with_meta("error", error, meta)
-                    } else {
-                        Envelope::<()>::error("error", error)
-                    };
-                    let _ = print_envelope(&envelope, output_format);
-                    std::process::exit(ExitCode::OperationFailed.into());
+                    let meta = create_meta();
+                    ErrorResponder::emit(error, output_format, meta, ExitCode::OperationFailed);
                 }
             }
         }
@@ -537,13 +502,8 @@ fn main() {
         Err(e) => {
             tracing::error!(error = %e, "Command failed");
             let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
-            let envelope = if let Some(meta) = create_meta() {
-                Envelope::<()>::error_with_meta("error", error, meta)
-            } else {
-                Envelope::<()>::error("error", error)
-            };
-            let _ = print_envelope(&envelope, output_format);
-            std::process::exit(ExitCode::OperationFailed.into());
+            let meta = create_meta();
+            ErrorResponder::emit(error, output_format, meta, ExitCode::OperationFailed);
         }
     }
 }
