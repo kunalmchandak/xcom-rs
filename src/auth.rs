@@ -221,15 +221,22 @@ impl AuthStore {
             Some(token) => {
                 // Check if token is expired
                 if let Some(expires_at) = token.expires_at {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64;
-                    if now >= expires_at {
-                        return AuthStatus::unauthenticated(vec![
-                            "Token expired. Run 'xcom-rs auth login' to re-authenticate"
-                                .to_string(),
-                        ]);
+                    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                        Ok(duration) => {
+                            let now = duration.as_secs() as i64;
+                            if now >= expires_at {
+                                return AuthStatus::unauthenticated(vec![
+                                    "Token expired. Run 'xcom-rs auth login' to re-authenticate"
+                                        .to_string(),
+                                ]);
+                            }
+                        }
+                        Err(_) => {
+                            // System time is before UNIX_EPOCH - treat as unauthenticated
+                            return AuthStatus::unauthenticated(vec![
+                                "System time error. Please check your system clock.".to_string(),
+                            ]);
+                        }
                     }
                 }
                 AuthStatus::authenticated("bearer".to_string(), token.scopes.clone())

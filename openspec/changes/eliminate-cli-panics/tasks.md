@@ -14,3 +14,12 @@
    - 確認結果: テストコード内の `unwrap`/`expect` は非スコープのため、更新不要。全テストが成功。
 - [x] 5. コード品質チェック (`make check`: fmt, clippy, test) を実行し、全て成功することを確認。
    - 検証結果: `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test --verbose` 全て成功。
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `src/logging.rs` の `LogFormat::from_str` を失敗可能な実装に変更し、未知の `--log-format` 値で `Err` を返すようにする（現状は `type Err = Infallible` かつ未知値を `Text` にフォールバックしており、`src/main.rs` のエラーハンドリング分岐が実行不能）。
+   - 実装: `type Err = String` に変更し、`json`/`text` 以外の値で `Err` を返すように修正。テストも更新。
+- [x] `src/main.rs` の `--log-format` エラーパスが実際に通ることを CLI テストで検証し、無効値指定時に `Envelope` 形式エラーと適切な終了コードを返すことを確認する。
+   - 実装: `tests/integration_test.rs` に `test_invalid_log_format`, `test_valid_log_format_json`, `test_valid_log_format_text` を追加。無効値で exit code 2 と JSON エラーが返ることを確認。
+- [x] 本番実行パスの `unwrap` を排除するため、`src/auth.rs` の `AuthStore::status`（`duration_since(...).unwrap()`）と `src/billing.rs` の `BudgetTracker::today`（`duration_since(...).unwrap()`）をエラーハンドリングへ置き換える。
+   - 実装: `src/auth.rs` の `AuthStore::status` で `duration_since` のエラーを `match` でハンドリングし、システム時刻エラー時はその旨のメッセージを返すように修正。`src/billing.rs` の `BudgetTracker::today` も同様に修正。
