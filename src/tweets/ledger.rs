@@ -191,8 +191,11 @@ mod tests {
             .record("test-1", "hash-1", "tweet-1", "success")
             .unwrap();
 
-        // Cleanup entries older than 0 days should remove nothing (entry is recent)
-        let deleted = ledger.cleanup_old_entries(0).unwrap();
+        // Sleep briefly to ensure timestamp difference on all platforms
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Cleanup entries older than 1 day should remove nothing (entry is recent)
+        let deleted = ledger.cleanup_old_entries(1).unwrap();
         assert_eq!(deleted, 0);
 
         // Entry should still exist
