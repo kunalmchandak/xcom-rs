@@ -26,6 +26,22 @@ supporting a human-readable text mode.
 cargo install xcom-rs
 ```
 
+### Homebrew
+
+This repository includes a Homebrew formula at `Formula/xcom_rs.rb`.
+
+To install via a tap (recommended for now):
+
+```bash
+brew tap tumf/tap
+brew install xcom_rs
+```
+
+Notes:
+
+- The formula name is `xcom_rs`, but the installed binary is `xcom-rs`.
+- If you don't have a tap yet, copy `Formula/xcom_rs.rb` into your tap repo under `Formula/`.
+
 ### From Source
 
 ```bash
