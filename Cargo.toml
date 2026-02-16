@@ -2,9 +2,12 @@
 name = "xcom-rs"
 version = "0.1.14"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
-description = "A CLI application"
+rust-version = "1.70"
+description = "Agent-friendly X.com CLI with introspection, auth, billing, tweets, and embedded skills"
 license = "MIT"
+readme = "README.md"
+keywords = ["cli", "automation", "agents", "twitter", "xcom"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
