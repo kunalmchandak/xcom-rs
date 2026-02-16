@@ -19,7 +19,12 @@ supporting a human-readable text mode.
 ### Prerequisites
 
 - Rust (1.70+)
-- [prek](https://github.com/j178/prek) (pre-commit hooks, auto-installed by setup script)
+
+### From crates.io
+
+```bash
+cargo install xcom-rs
+```
 
 ### From Source
 
@@ -27,36 +32,12 @@ supporting a human-readable text mode.
 cargo install --path .
 ```
 
-Or using the Makefile wrapper:
-
-```bash
-make install
-```
-
-### Development Setup
-
-This installs `prek` (if missing) and installs git hooks:
-
-```bash
-./.wt/setup
-```
+For development setup and Makefile workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick Start
 
-1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd xcom-rs
-```
-
-2. Build the project:
-```bash
-make build
-```
-
-3. Run a command:
-
-```bash
+cargo install xcom-rs
 xcom-rs commands
 ```
 
@@ -71,6 +52,42 @@ xcom-rs commands
 - `--dry-run`
 - `--max-cost-credits <n>`
 - `--budget-daily-credits <n>`
+
+### Authentication
+
+`xcom-rs` currently supports importing/exporting a bearer token for local use. OAuth login flows are
+not implemented yet.
+
+Check current auth status:
+
+```bash
+xcom-rs auth status --output json
+```
+
+Import credentials (expects a base64-encoded JSON token):
+
+```bash
+XCOM_AUTH_DATA="$(python - <<'PY'
+import base64, json
+
+token = {
+  "accessToken": "YOUR_TOKEN",
+  "tokenType": "bearer",
+  "expiresAt": None,
+  "scopes": ["tweet.read", "tweet.write"],
+}
+
+print(base64.b64encode(json.dumps(token).encode()).decode())
+PY
+)"
+
+xcom-rs auth import "$XCOM_AUTH_DATA" --output json
+```
+
+By default, credentials are stored at `$XDG_DATA_HOME/xcom-rs/auth.json` or
+`~/.local/share/xcom-rs/auth.json`.
+
+Security note: the export/import payload is base64 (not encrypted). Treat it like a secret.
 
 ### Examples
 
