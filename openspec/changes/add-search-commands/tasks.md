@@ -22,3 +22,7 @@
 
 - [x] 5.1 recent/users 検索のユニットテストを追加する（確認: `src/search/commands.rs` の `#[cfg(test)]` にテストがある）
 - [x] 5.2 CLI パーステストを追加する（確認: `src/cli.rs` のテストに新サブコマンドが含まれる）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `search recent` のレスポンスが仕様の `data.meta.pagination.next_token` を返すように修正する（`src/search/models.rs` の `SearchPaginationMeta` を `next_cursor`/`prev_cursor` から `next_token`/`prev_token` にリネームし、`camelCase` rename_all を削除。`src/introspection.rs` のSchemaを `next_token`/`prev_token`/`result_count` に更新。関連するすべてのテストが通過を確認済み）

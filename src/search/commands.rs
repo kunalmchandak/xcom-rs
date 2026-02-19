@@ -96,12 +96,12 @@ impl SearchClient for MockSearchClient {
             .cloned()
             .collect();
         let result_count = tweets.len();
-        let next_cursor = if result_count == limit && offset + limit < self.tweets.len() {
+        let next_token = if result_count == limit && offset + limit < self.tweets.len() {
             Some(format!("cursor_{}", offset + limit))
         } else {
             None
         };
-        let prev_cursor = if offset > 0 {
+        let prev_token = if offset > 0 {
             Some(format!("cursor_{}", offset.saturating_sub(limit)))
         } else {
             None
@@ -110,8 +110,8 @@ impl SearchClient for MockSearchClient {
             tweets,
             meta: Some(SearchResultMeta {
                 pagination: SearchPaginationMeta {
-                    next_cursor,
-                    prev_cursor,
+                    next_token,
+                    prev_token,
                     result_count,
                 },
             }),
@@ -129,12 +129,12 @@ impl SearchClient for MockSearchClient {
             .cloned()
             .collect();
         let result_count = users.len();
-        let next_cursor = if result_count == limit && offset + limit < self.users.len() {
+        let next_token = if result_count == limit && offset + limit < self.users.len() {
             Some(format!("cursor_{}", offset + limit))
         } else {
             None
         };
-        let prev_cursor = if offset > 0 {
+        let prev_token = if offset > 0 {
             Some(format!("cursor_{}", offset.saturating_sub(limit)))
         } else {
             None
@@ -143,8 +143,8 @@ impl SearchClient for MockSearchClient {
             users,
             meta: Some(SearchResultMeta {
                 pagination: SearchPaginationMeta {
-                    next_cursor,
-                    prev_cursor,
+                    next_token,
+                    prev_token,
                     result_count,
                 },
             }),
@@ -186,12 +186,12 @@ impl SearchCommand {
             .collect();
 
         let result_count = tweets.len();
-        let next_cursor = if result_count == limit {
+        let next_token = if result_count == limit {
             Some(format!("cursor_{}", offset + limit))
         } else {
             None
         };
-        let prev_cursor = if offset > 0 {
+        let prev_token = if offset > 0 {
             Some(format!("cursor_{}", offset.saturating_sub(limit)))
         } else {
             None
@@ -199,8 +199,8 @@ impl SearchCommand {
 
         let meta = Some(SearchResultMeta {
             pagination: SearchPaginationMeta {
-                next_cursor,
-                prev_cursor,
+                next_token,
+                prev_token,
                 result_count,
             },
         });
@@ -238,12 +238,12 @@ impl SearchCommand {
             .collect();
 
         let result_count = users.len();
-        let next_cursor = if result_count == limit {
+        let next_token = if result_count == limit {
             Some(format!("cursor_{}", offset + limit))
         } else {
             None
         };
-        let prev_cursor = if offset > 0 {
+        let prev_token = if offset > 0 {
             Some(format!("cursor_{}", offset.saturating_sub(limit)))
         } else {
             None
@@ -251,8 +251,8 @@ impl SearchCommand {
 
         let meta = Some(SearchResultMeta {
             pagination: SearchPaginationMeta {
-                next_cursor,
-                prev_cursor,
+                next_token,
+                prev_token,
                 result_count,
             },
         });
@@ -297,8 +297,8 @@ mod tests {
         assert!(result.meta.is_some());
         let meta = result.meta.unwrap();
         assert_eq!(meta.pagination.result_count, 5);
-        assert_eq!(meta.pagination.next_cursor, Some("cursor_5".to_string()));
-        assert!(meta.pagination.prev_cursor.is_none());
+        assert_eq!(meta.pagination.next_token, Some("cursor_5".to_string()));
+        assert!(meta.pagination.prev_token.is_none());
     }
 
     #[test]
@@ -313,8 +313,8 @@ mod tests {
         let result = cmd.search_recent(args).unwrap();
         assert_eq!(result.tweets.len(), 5);
         let meta = result.meta.unwrap();
-        assert_eq!(meta.pagination.next_cursor, Some("cursor_15".to_string()));
-        assert_eq!(meta.pagination.prev_cursor, Some("cursor_5".to_string()));
+        assert_eq!(meta.pagination.next_token, Some("cursor_15".to_string()));
+        assert_eq!(meta.pagination.prev_token, Some("cursor_5".to_string()));
     }
 
     #[test]
@@ -364,7 +364,7 @@ mod tests {
         assert!(result.meta.is_some());
         let meta = result.meta.unwrap();
         assert_eq!(meta.pagination.result_count, 5);
-        assert_eq!(meta.pagination.next_cursor, Some("cursor_5".to_string()));
+        assert_eq!(meta.pagination.next_token, Some("cursor_5".to_string()));
     }
 
     #[test]
@@ -379,8 +379,8 @@ mod tests {
         let result = cmd.search_users(args).unwrap();
         assert_eq!(result.users.len(), 5);
         let meta = result.meta.unwrap();
-        assert_eq!(meta.pagination.next_cursor, Some("cursor_10".to_string()));
-        assert_eq!(meta.pagination.prev_cursor, Some("cursor_0".to_string()));
+        assert_eq!(meta.pagination.next_token, Some("cursor_10".to_string()));
+        assert_eq!(meta.pagination.prev_token, Some("cursor_0".to_string()));
     }
 
     #[test]

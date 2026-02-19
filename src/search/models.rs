@@ -48,12 +48,11 @@ impl SearchUser {
 
 /// Pagination metadata for search results
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SearchPaginationMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_cursor: Option<String>,
+    pub next_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub prev_cursor: Option<String>,
+    pub prev_token: Option<String>,
     pub result_count: usize,
 }
 

@@ -436,11 +436,11 @@ impl CommandSchema {
                             "properties": {
                                 "pagination": {
                                     "type": "object",
-                                    "required": ["resultCount"],
+                                    "required": ["result_count"],
                                     "properties": {
-                                        "nextCursor": { "type": "string" },
-                                        "prevCursor": { "type": "string" },
-                                        "resultCount": { "type": "integer" }
+                                        "next_token": { "type": "string" },
+                                        "prev_token": { "type": "string" },
+                                        "result_count": { "type": "integer" }
                                     }
                                 }
                             }
@@ -482,11 +482,11 @@ impl CommandSchema {
                             "properties": {
                                 "pagination": {
                                     "type": "object",
-                                    "required": ["resultCount"],
+                                    "required": ["result_count"],
                                     "properties": {
-                                        "nextCursor": { "type": "string" },
-                                        "prevCursor": { "type": "string" },
-                                        "resultCount": { "type": "integer" }
+                                        "next_token": { "type": "string" },
+                                        "prev_token": { "type": "string" },
+                                        "result_count": { "type": "integer" }
                                     }
                                 }
                             }
