@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 /// X.com CLI tool for agent-friendly interactions
 #[derive(Parser, Debug)]
@@ -120,6 +120,24 @@ pub enum Commands {
         #[command(subcommand)]
         command: MediaCommands,
     },
+
+    /// Generate shell completion scripts
+    Completion {
+        /// Shell to generate completions for
+        #[arg(long, value_enum)]
+        shell: ShellChoice,
+    },
+}
+
+/// Supported shells for completion generation
+#[derive(Clone, Debug, ValueEnum)]
+pub enum ShellChoice {
+    /// Bash shell
+    Bash,
+    /// Zsh shell
+    Zsh,
+    /// Fish shell
+    Fish,
 }
 
 #[derive(Subcommand, Debug)]
@@ -530,6 +548,44 @@ mod tests {
         for (args, matcher) in cases {
             let cli = parse(args.iter().copied());
             assert!(matcher(cli.command), "args={args:?}");
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: completion subcommand
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn test_completion_subcommand() {
+        let cases = vec![
+            (
+                vec!["xcom-rs", "completion", "--shell", "bash"],
+                ShellChoice::Bash,
+            ),
+            (
+                vec!["xcom-rs", "completion", "--shell", "zsh"],
+                ShellChoice::Zsh,
+            ),
+            (
+                vec!["xcom-rs", "completion", "--shell", "fish"],
+                ShellChoice::Fish,
+            ),
+        ];
+
+        for (args, expected_shell) in cases {
+            let cli = parse(args.iter().copied());
+            let Some(Commands::Completion { shell }) = cli.command else {
+                panic!("Expected Completion command for args={args:?}");
+            };
+            assert!(
+                matches!(
+                    (shell, expected_shell),
+                    (ShellChoice::Bash, ShellChoice::Bash)
+                        | (ShellChoice::Zsh, ShellChoice::Zsh)
+                        | (ShellChoice::Fish, ShellChoice::Fish)
+                ),
+                "args={args:?}"
+            );
         }
     }
 

@@ -132,6 +132,7 @@ fn main() {
         Commands::Media { command } => {
             handlers::media::handle_media(command, &create_meta, output_format)
         }
+        Commands::Completion { shell } => handlers::completion::handle_completion(shell),
     };
 
     match result {
