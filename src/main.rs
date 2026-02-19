@@ -106,8 +106,8 @@ fn main() {
         Commands::Billing { command } => {
             handlers::billing::handle_billing(command, &ctx, &create_meta, output_format)
         }
-        Commands::Doctor => {
-            handlers::doctor::handle_doctor(&auth_store, &ctx, &create_meta, output_format)
+        Commands::Doctor { probe } => {
+            handlers::doctor::handle_doctor(&auth_store, &ctx, probe, &create_meta, output_format)
         }
         Commands::InstallSkills {
             skill,
@@ -132,6 +132,7 @@ fn main() {
         Commands::Media { command } => {
             handlers::media::handle_media(command, &create_meta, output_format)
         }
+        Commands::Completion { shell } => handlers::completion::handle_completion(shell),
     };
 
     match result {

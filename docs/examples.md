@@ -267,6 +267,182 @@ schema = run_xcom(["schema", "--command", "commands"])
 print(f"Schema for commands: {schema}")
 ```
 
+## Tweet Operations
+
+### Create a Tweet
+
+```bash
+xcom-rs tweets create "Hello from xcom-rs!" --output json
+```
+
+### Reply to a Tweet
+
+```bash
+xcom-rs tweets reply <tweet_id> "Great point!" --output json
+```
+
+### Post a Thread
+
+Post multiple tweets as a sequential thread (first tweet is standalone; the rest are replies):
+
+```bash
+xcom-rs tweets thread "First tweet in the thread" "Second tweet" "Third tweet" --output json
+```
+
+With idempotency prefix:
+
+```bash
+xcom-rs tweets thread "Part 1" "Part 2" --client-request-id-prefix "my-thread-001" --output json
+```
+
+### Like / Unlike a Tweet
+
+```bash
+xcom-rs tweets like <tweet_id> --output json
+xcom-rs tweets unlike <tweet_id> --output json
+```
+
+### Retweet / Unretweet
+
+```bash
+xcom-rs tweets retweet <tweet_id> --output json
+xcom-rs tweets unretweet <tweet_id> --output json
+```
+
+### Show a Single Tweet
+
+```bash
+xcom-rs tweets show <tweet_id> --output json
+```
+
+### Retrieve a Conversation Tree
+
+```bash
+xcom-rs tweets conversation <tweet_id> --output json
+```
+
+## Search
+
+### Search Recent Tweets
+
+```bash
+xcom-rs search recent "rust programming" --limit 20 --output json
+```
+
+### Search Users
+
+```bash
+xcom-rs search users "alice" --limit 10 --output json
+```
+
+## Timeline
+
+### Home Timeline
+
+```bash
+# Get the 10 most recent tweets from the home feed
+xcom-rs timeline home --output json
+
+# With custom limit and pagination cursor
+xcom-rs timeline home --limit 20 --cursor "<next_cursor_token>" --output json
+```
+
+### Mentions Timeline
+
+```bash
+xcom-rs timeline mentions --limit 10 --output json
+```
+
+### User Timeline
+
+```bash
+# Get tweets from a specific user handle (without @)
+xcom-rs timeline user johndoe --limit 10 --output json
+```
+
+## Media
+
+### Upload a Media File
+
+```bash
+# Upload an image and get back a media_id for use in tweets
+xcom-rs media upload /path/to/image.jpg --output json
+```
+
+Example output:
+
+```json
+{
+  "ok": true,
+  "type": "media.upload",
+  "schemaVersion": 1,
+  "data": {
+    "mediaId": "1234567890",
+    "mimeType": "image/jpeg",
+    "size": 102400
+  }
+}
+```
+
+## Bookmarks
+
+### Add a Tweet to Bookmarks
+
+```bash
+xcom-rs bookmarks add <tweet_id> --output json
+```
+
+### Remove a Tweet from Bookmarks
+
+```bash
+xcom-rs bookmarks remove <tweet_id> --output json
+```
+
+### List Bookmarked Tweets
+
+```bash
+xcom-rs bookmarks list --limit 20 --output json
+
+# With pagination cursor
+xcom-rs bookmarks list --limit 10 --cursor "<next_cursor_token>" --output json
+```
+
+## Shell Completions
+
+Generate shell completion scripts to enable tab-completion for `xcom-rs` commands and flags.
+
+### Bash
+
+```bash
+# Source completions for the current session
+source <(xcom-rs completion --shell bash)
+
+# Persist completions (requires bash-completion package)
+xcom-rs completion --shell bash > ~/.local/share/bash-completion/completions/xcom-rs
+```
+
+### Zsh
+
+```zsh
+# Source completions for the current session
+source <(xcom-rs completion --shell zsh)
+
+# Persist to a fpath directory and reload
+mkdir -p ~/.zsh/completions
+xcom-rs completion --shell zsh > ~/.zsh/completions/_xcom-rs
+# Add to ~/.zshrc: fpath=(~/.zsh/completions $fpath); autoload -Uz compinit && compinit
+```
+
+### Fish
+
+```fish
+# Source completions for the current session
+xcom-rs completion --shell fish | source
+
+# Persist completions
+xcom-rs completion --shell fish > ~/.config/fish/completions/xcom-rs.fish
+```
+
 ## Best Practices for Agents
 
 1. **Always use JSON output**: `--output json` for machine-readable responses
@@ -277,3 +453,118 @@ print(f"Schema for commands: {schema}")
 6. **Parse exit codes**: Use exit codes for basic error categorization
 7. **Schema introspection**: Use `schema` command to validate inputs/outputs
 8. **Error code vocabulary**: Use `error.code` for programmatic error handling
+
+## Diagnostics
+
+### Basic diagnostic check (no network calls)
+
+```bash
+xcom-rs doctor --output json
+```
+
+Example output:
+```json
+{
+  "ok": true,
+  "type": "doctor",
+  "schemaVersion": 1,
+  "data": {
+    "authStatus": {
+      "authenticated": true,
+      "authMode": "oauth2",
+      "scopes": ["tweet.read", "tweet.write", "users.read", "bookmark.read",
+                 "bookmark.write", "like.read", "like.write", "offline.access"]
+    },
+    "executionMode": {
+      "nonInteractive": false,
+      "dryRun": false
+    },
+    "scopeCheck": {
+      "ok": true,
+      "grantedScopes": ["tweet.read", "tweet.write", "users.read", "bookmark.read",
+                        "bookmark.write", "like.read", "like.write", "offline.access"],
+      "missingScopes": []
+    }
+  }
+}
+```
+
+### Diagnostic check with API connectivity probe
+
+Pass `--probe` to perform a TCP connectivity check to `api.twitter.com:443`.
+The probe is **skipped** (no network access) when the flag is omitted.
+
+```bash
+xcom-rs doctor --probe --output json
+```
+
+Example output when probe succeeds:
+```json
+{
+  "ok": true,
+  "type": "doctor",
+  "schemaVersion": 1,
+  "data": {
+    "authStatus": { "authenticated": true, "authMode": "oauth2" },
+    "executionMode": { "nonInteractive": false, "dryRun": false },
+    "scopeCheck": { "ok": true, "grantedScopes": ["tweet.read", "..."], "missingScopes": [] },
+    "apiProbe": {
+      "status": "ok",
+      "httpStatus": 200,
+      "message": "API is reachable"
+    }
+  }
+}
+```
+
+Example output when probe fails (no network / firewall):
+```json
+{
+  "ok": true,
+  "type": "doctor",
+  "schemaVersion": 1,
+  "data": {
+    "authStatus": { "authenticated": true, "authMode": "oauth2" },
+    "executionMode": { "nonInteractive": false, "dryRun": false },
+    "scopeCheck": { "ok": true, "grantedScopes": ["tweet.read", "..."], "missingScopes": [] },
+    "apiProbe": {
+      "status": "failed",
+      "message": "TCP connection to api.twitter.com:443 failed: Connection refused (os error 111)"
+    },
+    "warnings": ["API probe failed: TCP connection to api.twitter.com:443 failed: ..."],
+    "nextSteps": [
+      "Check network connectivity to api.twitter.com",
+      "Verify that your access token is valid and not expired"
+    ]
+  }
+}
+```
+
+### Missing OAuth scopes
+
+When the token lacks required scopes, `scopeCheck.ok` is `false` and
+`warnings` / `nextSteps` guide remediation:
+
+```json
+{
+  "ok": true,
+  "type": "doctor",
+  "schemaVersion": 1,
+  "data": {
+    "authStatus": { "authenticated": true, "authMode": "oauth2",
+                    "scopes": ["tweet.read"] },
+    "executionMode": { "nonInteractive": false, "dryRun": false },
+    "scopeCheck": {
+      "ok": false,
+      "grantedScopes": ["tweet.read"],
+      "missingScopes": ["tweet.write", "users.read", "bookmark.read",
+                        "bookmark.write", "like.read", "like.write", "offline.access"]
+    },
+    "warnings": ["Missing required OAuth scopes: tweet.write, users.read, ..."],
+    "nextSteps": [
+      "Re-authenticate with the required scopes: xcom-rs auth ...",
+      "Missing scopes: tweet.write, users.read, ..."
+    ]
+  }
+}
+```
