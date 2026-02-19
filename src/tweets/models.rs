@@ -41,6 +41,8 @@ pub struct ConversationEdge {
 /// Result of a conversation retrieval
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationResult {
+    /// The conversation_id that identifies this conversation thread
+    pub conversation_id: String,
     /// All posts in the conversation (flat list)
     pub posts: Vec<Tweet>,
     /// Parent-child edges for tree reconstruction

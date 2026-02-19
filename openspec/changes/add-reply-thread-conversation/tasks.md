@@ -22,3 +22,8 @@
 
 - [x] 5.1 返信/スレッド/会話取得のユニットテストを追加する（確認: `src/tweets/commands.rs` の `#[cfg(test)]` にテストがある）
 - [x] 5.2 CLI パーステストを追加する（確認: `src/cli.rs` のテストに新サブコマンドが含まれる）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `tweets conversation` のレスポンスに `data.conversation_id` を含める（`src/tweets/models.rs` の `ConversationResult`、`src/tweets/client.rs` の `fetch_conversation`、`src/introspection.rs` の `tweets conversation` output schema を更新し、`src/tweets/commands.rs` のテストで検証する）
+- [x] `tweets thread` 失敗時に `failedIndex` と `createdTweetIds` を含む構造化エラーを返す（`src/tweets/commands.rs::TweetCommand::thread` で部分失敗情報を保持する専用エラーを実装し、`src/handlers/tweets.rs::handle_thread` で error details に反映、失敗系テストを追加する）

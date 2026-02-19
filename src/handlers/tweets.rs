@@ -4,7 +4,8 @@ use crate::{
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
     tweets::{
         ClassifiedError, ConversationArgs, CreateArgs, IdempotencyConflictError, IdempotencyLedger,
-        IfExistsPolicy, ListArgs, ReplyArgs, ShowArgs, ThreadArgs, TweetCommand, TweetFields,
+        IfExistsPolicy, ListArgs, ReplyArgs, ShowArgs, ThreadArgs, ThreadPartialFailureError,
+        TweetCommand, TweetFields,
     },
 };
 use anyhow::Result;
@@ -292,6 +293,18 @@ fn handle_thread(
         Err(e) => {
             let error = if e.downcast_ref::<IdempotencyConflictError>().is_some() {
                 ErrorDetails::new(ErrorCode::IdempotencyConflict, e.to_string())
+            } else if let Some(partial_failure) = e.downcast_ref::<ThreadPartialFailureError>() {
+                // Include failedIndex and createdTweetIds in structured error details
+                let mut details = HashMap::new();
+                details.insert(
+                    "failedIndex".to_string(),
+                    serde_json::json!(partial_failure.failed_index),
+                );
+                details.insert(
+                    "createdTweetIds".to_string(),
+                    serde_json::json!(partial_failure.created_tweet_ids),
+                );
+                ErrorDetails::with_details(ErrorCode::InternalError, e.to_string(), details)
             } else {
                 ErrorDetails::new(ErrorCode::InternalError, e.to_string())
             };

@@ -14,6 +14,33 @@ pub struct IdempotencyConflictError {
     pub client_request_id: String,
 }
 
+/// Custom error type for partial thread failures.
+/// Contains information about which tweet in the thread failed,
+/// and which tweets were successfully created before the failure.
+#[derive(Debug)]
+pub struct ThreadPartialFailureError {
+    /// Index of the tweet that failed (0-based)
+    pub failed_index: usize,
+    /// IDs of tweets successfully created before the failure
+    pub created_tweet_ids: Vec<String>,
+    /// Underlying error message
+    pub message: String,
+}
+
+impl std::fmt::Display for ThreadPartialFailureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Thread posting failed at index {}: {} ({} tweets created before failure)",
+            self.failed_index,
+            self.message,
+            self.created_tweet_ids.len()
+        )
+    }
+}
+
+impl std::error::Error for ThreadPartialFailureError {}
+
 impl std::fmt::Display for IdempotencyConflictError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -534,10 +561,20 @@ impl TweetCommand {
             }
 
             // Post tweet (first tweet is standalone, rest are replies)
-            let tweet = self
-                .api_client
-                .post_tweet(text, previous_id.as_deref())
-                .context(format!("Failed to post tweet at index {}", index))?;
+            let tweet_result = self.api_client.post_tweet(text, previous_id.as_deref());
+
+            let tweet = match tweet_result {
+                Ok(t) => t,
+                Err(e) => {
+                    // Return structured error with partial failure information
+                    return Err(ThreadPartialFailureError {
+                        failed_index: index,
+                        created_tweet_ids: created_ids,
+                        message: e.to_string(),
+                    }
+                    .into());
+                }
+            };
 
             self.ledger
                 .record(&client_request_id, &request_hash, &tweet.id, "success")
@@ -818,6 +855,109 @@ mod tests {
     }
 
     #[test]
+    fn test_thread_partial_failure_contains_structured_error() {
+        // Create a mock client that fails on the second post
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+
+        // We use a custom mock that fails after the first tweet
+        let mut error_client = crate::tweets::client::MockTweetApiClient::new();
+        // The mock client with simulate_error=true will fail every call,
+        // so we test with a client that starts with error enabled
+        error_client.simulate_error = true;
+
+        let cmd = TweetCommand::with_client(ledger, Box::new(error_client));
+
+        let args = ThreadArgs {
+            texts: vec![
+                "First tweet".to_string(),
+                "Second tweet".to_string(),
+                "Third tweet".to_string(),
+            ],
+            client_request_id_prefix: Some("thread-fail-test".to_string()),
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        let result = cmd.thread(args);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        let partial_failure = err.downcast_ref::<ThreadPartialFailureError>();
+        assert!(
+            partial_failure.is_some(),
+            "Expected ThreadPartialFailureError but got different error type"
+        );
+
+        let pf = partial_failure.unwrap();
+        assert_eq!(
+            pf.failed_index, 0,
+            "Should fail at index 0 since mock errors on all calls"
+        );
+        assert!(
+            pf.created_tweet_ids.is_empty(),
+            "No tweets should be created before first failure"
+        );
+    }
+
+    #[test]
+    fn test_thread_partial_failure_after_some_success() {
+        use crate::tweets::client::MockTweetApiClient;
+
+        // Custom client that succeeds for first N tweets then fails
+        // We test this by creating a client that fails, but we can pre-configure
+        // some posts via ledger to simulate partial success
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+
+        // Pre-populate ledger with first tweet "already created"
+        let prefix = "partial-fail-prefix";
+        let request_hash = IdempotencyLedger::compute_request_hash("First tweet");
+        ledger
+            .record(
+                &format!("{}-0", prefix),
+                &request_hash,
+                "tweet_pre_created_0",
+                "success",
+            )
+            .unwrap();
+
+        // Now the api client will fail on actual calls
+        let mut error_client = MockTweetApiClient::new();
+        error_client.simulate_error = true;
+        let cmd = TweetCommand::with_client(ledger, Box::new(error_client));
+
+        let args = ThreadArgs {
+            texts: vec!["First tweet".to_string(), "Second tweet".to_string()],
+            client_request_id_prefix: Some(prefix.to_string()),
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        let result = cmd.thread(args);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        let partial_failure = err.downcast_ref::<ThreadPartialFailureError>();
+        assert!(
+            partial_failure.is_some(),
+            "Expected ThreadPartialFailureError"
+        );
+
+        let pf = partial_failure.unwrap();
+        assert_eq!(
+            pf.failed_index, 1,
+            "Should fail at index 1 (first was from ledger cache)"
+        );
+        assert_eq!(
+            pf.created_tweet_ids.len(),
+            1,
+            "One tweet should be in created_tweet_ids"
+        );
+        assert_eq!(pf.created_tweet_ids[0], "tweet_pre_created_0");
+    }
+
+    #[test]
     fn test_show_returns_tweet() {
         let (cmd, _temp) = create_test_command_with_fixture();
 
@@ -859,6 +999,15 @@ mod tests {
         assert!(result.posts.iter().any(|t| t.id == "tweet_root"));
         // Should have edges connecting replies to parents
         assert!(!result.edges.is_empty());
+        // Should include conversation_id in the result
+        assert!(
+            !result.conversation_id.is_empty(),
+            "conversation_id should be present in ConversationResult"
+        );
+        assert_eq!(
+            result.conversation_id, "conv_root_001",
+            "conversation_id should match the root tweet's conversation_id"
+        );
     }
 
     #[test]

@@ -184,7 +184,11 @@ pub fn fetch_conversation(
     // Step 3: Build edges
     let edges = build_conversation_edges(&posts);
 
-    Ok(ConversationResult { posts, edges })
+    Ok(ConversationResult {
+        conversation_id,
+        posts,
+        edges,
+    })
 }
 
 #[cfg(test)]

@@ -713,8 +713,12 @@ impl CommandSchema {
                 }),
                 output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
                     "type": "object",
-                    "required": ["posts", "edges"],
+                    "required": ["conversation_id", "posts", "edges"],
                     "properties": {
+                        "conversation_id": {
+                            "type": "string",
+                            "description": "The conversation_id that identifies this conversation thread"
+                        },
                         "posts": {
                             "type": "array",
                             "items": {
