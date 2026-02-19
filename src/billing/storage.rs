@@ -167,6 +167,10 @@ impl CostEstimator {
         // Example rates (stub data)
         rate_table.insert("tweets.create".to_string(), 5);
         rate_table.insert("tweets.read".to_string(), 1);
+        rate_table.insert("tweets.reply".to_string(), 5);
+        rate_table.insert("tweets.thread".to_string(), 5);
+        rate_table.insert("tweets.show".to_string(), 1);
+        rate_table.insert("tweets.conversation".to_string(), 3);
         rate_table.insert("users.read".to_string(), 1);
         rate_table.insert("search.tweets".to_string(), 3);
         rate_table.insert("search.recent".to_string(), 3);
