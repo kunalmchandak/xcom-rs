@@ -22,3 +22,7 @@
 
 - [x] 5.1 エンゲージ操作のユニットテストを追加する（確認: `src/tweets/commands.rs` と `src/bookmarks/commands.rs` の `#[cfg(test)]` にテストがある）
 - [x] 5.2 CLI パーステストを追加する（確認: `src/cli.rs` のテストに新サブコマンドが含まれる）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] Fix flaky env-var interference in `src/tweets/commands.rs::tests::test_list_with_field_projection` by using `crate::test_utils::env_lock::ENV_LOCK` and clearing `XCOM_SIMULATE_ERROR`/`XCOM_RETRY_AFTER_MS` before assertions; re-run `cargo test --verbose` to confirm no regression.

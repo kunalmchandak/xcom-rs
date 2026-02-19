@@ -591,6 +591,11 @@ mod tests {
 
     #[test]
     fn test_list_with_field_projection() {
+        // Use ENV_LOCK to ensure XCOM_SIMULATE_ERROR is not set from other tests
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+        std::env::remove_var("XCOM_RETRY_AFTER_MS");
+
         let (cmd, _temp) = create_test_command();
 
         let args = ListArgs {
