@@ -82,7 +82,11 @@ pub enum Commands {
     },
 
     /// Diagnostic information about configuration and runtime state
-    Doctor,
+    Doctor {
+        /// Perform an API connectivity probe (requires network access)
+        #[arg(long)]
+        probe: bool,
+    },
 
     /// Install skills from embedded repository
     InstallSkills {
@@ -538,7 +542,10 @@ mod tests {
                 matches!(cmd, Some(Commands::Commands))
             }),
             (vec!["xcom-rs", "doctor"], |cmd| {
-                matches!(cmd, Some(Commands::Doctor))
+                matches!(cmd, Some(Commands::Doctor { probe: false }))
+            }),
+            (vec!["xcom-rs", "doctor", "--probe"], |cmd| {
+                matches!(cmd, Some(Commands::Doctor { probe: true }))
             }),
             (vec!["xcom-rs", "demo-interactive"], |cmd| {
                 matches!(cmd, Some(Commands::DemoInteractive))

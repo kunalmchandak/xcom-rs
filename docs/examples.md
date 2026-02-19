@@ -313,3 +313,118 @@ xcom-rs completion --shell fish > ~/.config/fish/completions/xcom-rs.fish
 6. **Parse exit codes**: Use exit codes for basic error categorization
 7. **Schema introspection**: Use `schema` command to validate inputs/outputs
 8. **Error code vocabulary**: Use `error.code` for programmatic error handling
+
+## Diagnostics
+
+### Basic diagnostic check (no network calls)
+
+```bash
+xcom-rs doctor --output json
+```
+
+Example output:
+```json
+{
+  "ok": true,
+  "type": "doctor",
+  "schemaVersion": 1,
+  "data": {
+    "authStatus": {
+      "authenticated": true,
+      "authMode": "oauth2",
+      "scopes": ["tweet.read", "tweet.write", "users.read", "bookmark.read",
+                 "bookmark.write", "like.read", "like.write", "offline.access"]
+    },
+    "executionMode": {
+      "nonInteractive": false,
+      "dryRun": false
+    },
+    "scopeCheck": {
+      "ok": true,
+      "grantedScopes": ["tweet.read", "tweet.write", "users.read", "bookmark.read",
+                        "bookmark.write", "like.read", "like.write", "offline.access"],
+      "missingScopes": []
+    }
+  }
+}
+```
+
+### Diagnostic check with API connectivity probe
+
+Pass `--probe` to perform a TCP connectivity check to `api.twitter.com:443`.
+The probe is **skipped** (no network access) when the flag is omitted.
+
+```bash
+xcom-rs doctor --probe --output json
+```
+
+Example output when probe succeeds:
+```json
+{
+  "ok": true,
+  "type": "doctor",
+  "schemaVersion": 1,
+  "data": {
+    "authStatus": { "authenticated": true, "authMode": "oauth2" },
+    "executionMode": { "nonInteractive": false, "dryRun": false },
+    "scopeCheck": { "ok": true, "grantedScopes": ["tweet.read", "..."], "missingScopes": [] },
+    "apiProbe": {
+      "status": "ok",
+      "httpStatus": 200,
+      "message": "API is reachable"
+    }
+  }
+}
+```
+
+Example output when probe fails (no network / firewall):
+```json
+{
+  "ok": true,
+  "type": "doctor",
+  "schemaVersion": 1,
+  "data": {
+    "authStatus": { "authenticated": true, "authMode": "oauth2" },
+    "executionMode": { "nonInteractive": false, "dryRun": false },
+    "scopeCheck": { "ok": true, "grantedScopes": ["tweet.read", "..."], "missingScopes": [] },
+    "apiProbe": {
+      "status": "failed",
+      "message": "TCP connection to api.twitter.com:443 failed: Connection refused (os error 111)"
+    },
+    "warnings": ["API probe failed: TCP connection to api.twitter.com:443 failed: ..."],
+    "nextSteps": [
+      "Check network connectivity to api.twitter.com",
+      "Verify that your access token is valid and not expired"
+    ]
+  }
+}
+```
+
+### Missing OAuth scopes
+
+When the token lacks required scopes, `scopeCheck.ok` is `false` and
+`warnings` / `nextSteps` guide remediation:
+
+```json
+{
+  "ok": true,
+  "type": "doctor",
+  "schemaVersion": 1,
+  "data": {
+    "authStatus": { "authenticated": true, "authMode": "oauth2",
+                    "scopes": ["tweet.read"] },
+    "executionMode": { "nonInteractive": false, "dryRun": false },
+    "scopeCheck": {
+      "ok": false,
+      "grantedScopes": ["tweet.read"],
+      "missingScopes": ["tweet.write", "users.read", "bookmark.read",
+                        "bookmark.write", "like.read", "like.write", "offline.access"]
+    },
+    "warnings": ["Missing required OAuth scopes: tweet.write, users.read, ..."],
+    "nextSteps": [
+      "Re-authenticate with the required scopes: xcom-rs auth ...",
+      "Missing scopes: tweet.write, users.read, ..."
+    ]
+  }
+}
+```
