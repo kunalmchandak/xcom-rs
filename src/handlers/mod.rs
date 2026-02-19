@@ -4,4 +4,5 @@ pub mod demo;
 pub mod doctor;
 pub mod introspection;
 pub mod skills;
+pub mod timeline;
 pub mod tweets;
