@@ -102,6 +102,19 @@ pub struct ListArgs {
     pub cursor: Option<String>,
 }
 
+/// Arguments for engagement operations (like/unlike/retweet/unretweet)
+#[derive(Debug, Clone)]
+pub struct EngagementArgs {
+    pub tweet_id: String,
+}
+
+/// Result of an engagement operation (like/unlike/retweet/unretweet)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngagementResult {
+    pub tweet_id: String,
+    pub success: bool,
+}
+
 /// Arguments for replying to a tweet
 #[derive(Debug, Clone)]
 pub struct ReplyArgs {
@@ -385,6 +398,126 @@ impl TweetCommand {
         Ok(CreateResult { tweet, meta })
     }
 
+    /// Like a tweet
+    pub fn like(&self, args: EngagementArgs) -> Result<EngagementResult> {
+        // Check for simulated errors via environment variables (for testing)
+        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
+            match error_type.as_str() {
+                "rate_limit" => {
+                    let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(60000);
+                    return Err(ClassifiedError::from_status_code(
+                        429,
+                        "Rate limit exceeded".to_string(),
+                    )
+                    .with_retry_after(retry_after)
+                    .into());
+                }
+                "auth_error" => {
+                    return Err(ClassifiedError::from_status_code(
+                        403,
+                        "Insufficient permissions to like tweet".to_string(),
+                    )
+                    .into());
+                }
+                _ => {}
+            }
+        }
+
+        // Simulate like operation (in real implementation, would call POST /2/users/{id}/likes)
+        Ok(EngagementResult {
+            tweet_id: args.tweet_id,
+            success: true,
+        })
+    }
+
+    /// Unlike a tweet
+    pub fn unlike(&self, args: EngagementArgs) -> Result<EngagementResult> {
+        // Check for simulated errors via environment variables (for testing)
+        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
+            if error_type.as_str() == "rate_limit" {
+                let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
+                    .ok()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(60000);
+                return Err(ClassifiedError::from_status_code(
+                    429,
+                    "Rate limit exceeded".to_string(),
+                )
+                .with_retry_after(retry_after)
+                .into());
+            }
+        }
+
+        // Simulate unlike operation (in real implementation, would call DELETE /2/users/{id}/likes/{tweet_id})
+        Ok(EngagementResult {
+            tweet_id: args.tweet_id,
+            success: true,
+        })
+    }
+
+    /// Retweet a tweet
+    pub fn retweet(&self, args: EngagementArgs) -> Result<EngagementResult> {
+        // Check for simulated errors via environment variables (for testing)
+        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
+            match error_type.as_str() {
+                "rate_limit" => {
+                    let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(60000);
+                    return Err(ClassifiedError::from_status_code(
+                        429,
+                        "Rate limit exceeded".to_string(),
+                    )
+                    .with_retry_after(retry_after)
+                    .into());
+                }
+                "auth_error" => {
+                    return Err(ClassifiedError::from_status_code(
+                        403,
+                        "Insufficient permissions to retweet".to_string(),
+                    )
+                    .into());
+                }
+                _ => {}
+            }
+        }
+
+        // Simulate retweet operation (in real implementation, would call POST /2/users/{id}/retweets)
+        Ok(EngagementResult {
+            tweet_id: args.tweet_id,
+            success: true,
+        })
+    }
+
+    /// Unretweet a tweet
+    pub fn unretweet(&self, args: EngagementArgs) -> Result<EngagementResult> {
+        // Check for simulated errors via environment variables (for testing)
+        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
+            if error_type.as_str() == "rate_limit" {
+                let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
+                    .ok()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(60000);
+                return Err(ClassifiedError::from_status_code(
+                    429,
+                    "Rate limit exceeded".to_string(),
+                )
+                .with_retry_after(retry_after)
+                .into());
+            }
+        }
+
+        // Simulate unretweet operation (in real implementation, would call DELETE /2/users/{id}/retweets/{source_tweet_id})
+        Ok(EngagementResult {
+            tweet_id: args.tweet_id,
+            success: true,
+        })
+    }
+
     /// List tweets with field projection and pagination
     pub fn list(&self, args: ListArgs) -> Result<ListResult> {
         // Check for simulated errors via environment variables (for testing)
@@ -629,6 +762,11 @@ mod tests {
 
     #[test]
     fn test_create_generates_client_request_id() {
+        // Use ENV_LOCK to ensure XCOM_SIMULATE_ERROR is not set from other tests
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+        std::env::remove_var("XCOM_RETRY_AFTER_MS");
+
         let (cmd, _temp) = create_test_command();
 
         let args = CreateArgs {
@@ -644,6 +782,11 @@ mod tests {
 
     #[test]
     fn test_create_with_explicit_client_request_id() {
+        // Use ENV_LOCK to ensure XCOM_SIMULATE_ERROR is not set from other tests
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+        std::env::remove_var("XCOM_RETRY_AFTER_MS");
+
         let (cmd, _temp) = create_test_command();
 
         let args = CreateArgs {
@@ -658,6 +801,10 @@ mod tests {
 
     #[test]
     fn test_create_idempotency_return_policy() {
+        // Use ENV_LOCK to ensure XCOM_SIMULATE_ERROR is not set from other tests
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+
         let (cmd, _temp) = create_test_command();
 
         let args = CreateArgs {
@@ -678,6 +825,10 @@ mod tests {
 
     #[test]
     fn test_create_idempotency_error_policy() {
+        // Use ENV_LOCK to ensure XCOM_SIMULATE_ERROR is not set from other tests
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+
         let (cmd, _temp) = create_test_command();
 
         let args = CreateArgs {
@@ -697,6 +848,11 @@ mod tests {
 
     #[test]
     fn test_list_with_field_projection() {
+        // Use ENV_LOCK to ensure XCOM_SIMULATE_ERROR is not set from other tests
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+        std::env::remove_var("XCOM_RETRY_AFTER_MS");
+
         let (cmd, _temp) = create_test_command();
 
         let args = ListArgs {
@@ -718,6 +874,11 @@ mod tests {
 
     #[test]
     fn test_list_pagination() {
+        // Use ENV_LOCK to ensure XCOM_SIMULATE_ERROR is not set from other tests
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+        std::env::remove_var("XCOM_RETRY_AFTER_MS");
+
         let (cmd, _temp) = create_test_command();
 
         let args = ListArgs {
@@ -765,6 +926,108 @@ mod tests {
             IfExistsPolicy::Error
         );
         assert!(IfExistsPolicy::from_str("invalid").is_err());
+    }
+
+    #[test]
+    fn test_like_tweet() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+
+        let (cmd, _temp) = create_test_command();
+
+        let args = EngagementArgs {
+            tweet_id: "tweet_123".to_string(),
+        };
+
+        let result = cmd.like(args).unwrap();
+        assert_eq!(result.tweet_id, "tweet_123");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_unlike_tweet() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+
+        let (cmd, _temp) = create_test_command();
+
+        let args = EngagementArgs {
+            tweet_id: "tweet_456".to_string(),
+        };
+
+        let result = cmd.unlike(args).unwrap();
+        assert_eq!(result.tweet_id, "tweet_456");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_retweet() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+
+        let (cmd, _temp) = create_test_command();
+
+        let args = EngagementArgs {
+            tweet_id: "tweet_789".to_string(),
+        };
+
+        let result = cmd.retweet(args).unwrap();
+        assert_eq!(result.tweet_id, "tweet_789");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_unretweet() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+
+        let (cmd, _temp) = create_test_command();
+
+        let args = EngagementArgs {
+            tweet_id: "tweet_101".to_string(),
+        };
+
+        let result = cmd.unretweet(args).unwrap();
+        assert_eq!(result.tweet_id, "tweet_101");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_like_rate_limit_simulation() {
+        // Use the global ENV_LOCK to avoid interfering with other tests
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+
+        std::env::set_var("XCOM_SIMULATE_ERROR", "rate_limit");
+        std::env::set_var("XCOM_RETRY_AFTER_MS", "5000");
+
+        let (cmd, _temp) = create_test_command();
+        let args = EngagementArgs {
+            tweet_id: "tweet_123".to_string(),
+        };
+
+        let result = cmd.like(args);
+
+        std::env::remove_var("XCOM_SIMULATE_ERROR");
+        std::env::remove_var("XCOM_RETRY_AFTER_MS");
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let classified = err.downcast_ref::<ClassifiedError>().unwrap();
+        assert_eq!(classified.status_code, Some(429));
+        assert!(classified.is_retryable);
+    }
+
+    #[test]
+    fn test_engagement_result_serialization() {
+        let result = EngagementResult {
+            tweet_id: "tweet_123".to_string(),
+            success: true,
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["tweet_id"], "tweet_123");
+        assert_eq!(parsed["success"], true);
     }
 
     fn create_test_command_with_fixture() -> (TweetCommand, TempDir) {

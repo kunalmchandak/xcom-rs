@@ -3,9 +3,9 @@ use crate::{
     output::{print_envelope, print_ndjson, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
     tweets::{
-        ClassifiedError, ConversationArgs, CreateArgs, IdempotencyConflictError, IdempotencyLedger,
-        IfExistsPolicy, ListArgs, ReplyArgs, ShowArgs, ThreadArgs, ThreadPartialFailureError,
-        TweetCommand, TweetFields,
+        ClassifiedError, ConversationArgs, CreateArgs, EngagementArgs, IdempotencyConflictError,
+        IdempotencyLedger, IfExistsPolicy, ListArgs, ReplyArgs, ShowArgs, ThreadArgs,
+        ThreadPartialFailureError, TweetCommand, TweetFields,
     },
 };
 use anyhow::Result;
@@ -38,6 +38,18 @@ pub fn handle_tweets(
             limit,
             cursor,
         } => handle_list(tweet_cmd, fields, limit, cursor, create_meta, output_format),
+        TweetsCommands::Like { tweet_id } => {
+            handle_engagement(tweet_cmd, "like", tweet_id, create_meta, output_format)
+        }
+        TweetsCommands::Unlike { tweet_id } => {
+            handle_engagement(tweet_cmd, "unlike", tweet_id, create_meta, output_format)
+        }
+        TweetsCommands::Retweet { tweet_id } => {
+            handle_engagement(tweet_cmd, "retweet", tweet_id, create_meta, output_format)
+        }
+        TweetsCommands::Unretweet { tweet_id } => {
+            handle_engagement(tweet_cmd, "unretweet", tweet_id, create_meta, output_format)
+        }
         TweetsCommands::Reply {
             tweet_id,
             text,
@@ -69,6 +81,64 @@ pub fn handle_tweets(
         }
         TweetsCommands::Conversation { tweet_id } => {
             handle_conversation(tweet_cmd, tweet_id, create_meta, output_format)
+        }
+    }
+}
+
+fn handle_engagement(
+    tweet_cmd: TweetCommand,
+    action: &str,
+    tweet_id: String,
+    create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,
+    output_format: OutputFormat,
+) -> Result<()> {
+    tracing::info!(action = %action, tweet_id = %tweet_id, "Executing engagement action");
+
+    let args = EngagementArgs {
+        tweet_id: tweet_id.clone(),
+    };
+
+    let result = match action {
+        "like" => tweet_cmd.like(args),
+        "unlike" => tweet_cmd.unlike(args),
+        "retweet" => tweet_cmd.retweet(args),
+        "unretweet" => tweet_cmd.unretweet(args),
+        _ => unreachable!("Unknown engagement action: {}", action),
+    };
+
+    let op_type = format!("tweets.{}", action);
+
+    match result {
+        Ok(engagement_result) => {
+            let envelope = if let Some(meta) = create_meta() {
+                Envelope::success_with_meta(&op_type, engagement_result, meta)
+            } else {
+                Envelope::success(&op_type, engagement_result)
+            };
+            print_envelope(&envelope, output_format)
+        }
+        Err(e) => {
+            let error = if let Some(classified) = e.downcast_ref::<ClassifiedError>() {
+                if let Some(retry_after_ms) = classified.retry_after_ms {
+                    ErrorDetails::with_retry_after(
+                        classified.to_error_code(),
+                        e.to_string(),
+                        retry_after_ms,
+                    )
+                } else {
+                    ErrorDetails::new(classified.to_error_code(), e.to_string())
+                }
+            } else {
+                ErrorDetails::new(ErrorCode::InternalError, e.to_string())
+            };
+
+            let envelope = if let Some(meta) = create_meta() {
+                Envelope::<()>::error_with_meta("error", error, meta)
+            } else {
+                Envelope::<()>::error("error", error)
+            };
+            let _ = print_envelope(&envelope, output_format);
+            std::process::exit(ExitCode::OperationFailed.into());
         }
     }
 }

@@ -181,6 +181,15 @@ impl CostEstimator {
         rate_table.insert("timeline.user".to_string(), 1);
         // Media operation rates
         rate_table.insert("media.upload".to_string(), 10);
+        // Engagement operation rates
+        rate_table.insert("tweets.like".to_string(), 2);
+        rate_table.insert("tweets.unlike".to_string(), 2);
+        rate_table.insert("tweets.retweet".to_string(), 3);
+        rate_table.insert("tweets.unretweet".to_string(), 2);
+        // Bookmark operation rates
+        rate_table.insert("bookmarks.add".to_string(), 2);
+        rate_table.insert("bookmarks.remove".to_string(), 2);
+        rate_table.insert("bookmarks.list".to_string(), 1);
 
         Self {
             rate_table,

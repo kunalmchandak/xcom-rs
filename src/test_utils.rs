@@ -56,6 +56,66 @@ pub mod env_lock {
     pub static ENV_LOCK: Mutex<()> = Mutex::new(());
 }
 
+/// Mock fixtures for engagement operations (like/retweet/bookmarks)
+pub mod engagement_fixtures {
+    use crate::tweets::models::Tweet;
+
+    /// Create a fixture tweet for testing
+    pub fn mock_tweet(id: &str) -> Tweet {
+        let mut tweet = Tweet::new(id.to_string());
+        tweet.text = Some(format!("Test tweet content for {}", id));
+        tweet.author_id = Some("user_test123".to_string());
+        tweet.created_at = Some("2024-01-01T00:00:00Z".to_string());
+        tweet
+    }
+
+    /// Create a fixture list of tweets for bookmark list testing
+    pub fn mock_bookmark_tweets(count: usize) -> Vec<Tweet> {
+        (0..count)
+            .map(|i| mock_tweet(&format!("bookmark_tweet_{}", i)))
+            .collect()
+    }
+
+    /// Create mock engagement result data for like operation
+    pub fn mock_like_result(tweet_id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "tweet_id": tweet_id,
+            "success": true
+        })
+    }
+
+    /// Create mock engagement result data for retweet operation
+    pub fn mock_retweet_result(tweet_id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "tweet_id": tweet_id,
+            "success": true
+        })
+    }
+
+    /// Create mock bookmark list result with pagination
+    pub fn mock_bookmark_list_result(limit: usize, offset: usize) -> serde_json::Value {
+        let tweets: Vec<serde_json::Value> = (offset..(offset + limit))
+            .map(|i| {
+                serde_json::json!({
+                    "id": format!("bookmark_tweet_{}", i),
+                    "text": format!("Bookmarked tweet text {}", i),
+                    "author_id": format!("user_{}", i),
+                    "created_at": "2024-01-01T00:00:00Z"
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "tweets": tweets,
+            "meta": {
+                "pagination": {
+                    "next_token": format!("bookmark_cursor_{}", offset + limit)
+                }
+            }
+        })
+    }
+}
+
 pub mod helpers {
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;

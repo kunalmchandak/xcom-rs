@@ -364,6 +364,106 @@ impl CommandsList {
                     risk: RiskLevel::Medium,
                     has_cost: true,
                 },
+                CommandInfo {
+                    name: "tweets like".to_string(),
+                    description: "Like a tweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to like".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets unlike".to_string(),
+                    description: "Unlike a tweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to unlike".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets retweet".to_string(),
+                    description: "Retweet a tweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to retweet".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets unretweet".to_string(),
+                    description: "Undo a retweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to unretweet".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "bookmarks add".to_string(),
+                    description: "Add a tweet to bookmarks".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to bookmark".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "bookmarks remove".to_string(),
+                    description: "Remove a tweet from bookmarks".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to remove from bookmarks".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "bookmarks list".to_string(),
+                    description: "List bookmarked tweets".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of bookmarks to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
             ],
         }
     }
@@ -911,6 +1011,85 @@ impl CommandSchema {
                     }
                 })),
             },
+            "tweets like" | "tweets unlike" | "tweets retweet" | "tweets unretweet" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id"],
+                    "properties": {
+                        "tweet_id": { "type": "string", "description": "Tweet ID" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id", "success"],
+                    "properties": {
+                        "tweet_id": { "type": "string" },
+                        "success": { "type": "boolean" }
+                    }
+                })),
+            },
+            "bookmarks add" | "bookmarks remove" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id"],
+                    "properties": {
+                        "tweet_id": { "type": "string", "description": "Tweet ID" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id", "success"],
+                    "properties": {
+                        "tweet_id": { "type": "string" },
+                        "success": { "type": "boolean" }
+                    }
+                })),
+            },
+            "bookmarks list" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "default": 10 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweets"],
+                    "properties": {
+                        "tweets": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "text": { "type": "string" },
+                                    "author_id": { "type": "string" },
+                                    "created_at": { "type": "string" }
+                                }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "properties": {
+                                "pagination": {
+                                    "type": "object",
+                                    "properties": {
+                                        "next_token": { "type": "string" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
             _ => Self {
                 command: command.to_string(),
                 input_schema: serde_json::json!({
@@ -1311,6 +1490,93 @@ impl CommandHelp {
                     ExampleInfo {
                         description: "Upload a video file".to_string(),
                         command: "xcom-rs media upload /path/to/video.mp4 --output json".to_string(),
+                    },
+                ],
+            },
+            "tweets like" => Self {
+                command: command.to_string(),
+                description: "Like a tweet on X.com".to_string(),
+                usage: "xcom-rs tweets like <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Like a specific tweet".to_string(),
+                    command: "xcom-rs tweets like 1234567890 --output json".to_string(),
+                }],
+            },
+            "tweets unlike" => Self {
+                command: command.to_string(),
+                description: "Unlike a tweet on X.com".to_string(),
+                usage: "xcom-rs tweets unlike <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Unlike a specific tweet".to_string(),
+                    command: "xcom-rs tweets unlike 1234567890 --output json".to_string(),
+                }],
+            },
+            "tweets retweet" => Self {
+                command: command.to_string(),
+                description: "Retweet a tweet on X.com".to_string(),
+                usage: "xcom-rs tweets retweet <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Retweet a specific tweet".to_string(),
+                    command: "xcom-rs tweets retweet 1234567890 --output json".to_string(),
+                }],
+            },
+            "tweets unretweet" => Self {
+                command: command.to_string(),
+                description: "Undo a retweet on X.com".to_string(),
+                usage: "xcom-rs tweets unretweet <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Unretweet a specific tweet".to_string(),
+                    command: "xcom-rs tweets unretweet 1234567890 --output json".to_string(),
+                }],
+            },
+            "bookmarks add" => Self {
+                command: command.to_string(),
+                description: "Add a tweet to bookmarks on X.com".to_string(),
+                usage: "xcom-rs bookmarks add <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Bookmark a specific tweet".to_string(),
+                    command: "xcom-rs bookmarks add 1234567890 --output json".to_string(),
+                }],
+            },
+            "bookmarks remove" => Self {
+                command: command.to_string(),
+                description: "Remove a tweet from bookmarks on X.com".to_string(),
+                usage: "xcom-rs bookmarks remove <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Remove a specific tweet from bookmarks".to_string(),
+                    command: "xcom-rs bookmarks remove 1234567890 --output json".to_string(),
+                }],
+            },
+            "bookmarks list" => Self {
+                command: command.to_string(),
+                description: "List bookmarked tweets on X.com".to_string(),
+                usage: "xcom-rs bookmarks list [--limit N] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![
+                    ExampleInfo {
+                        description: "List bookmarks with JSON output".to_string(),
+                        command: "xcom-rs bookmarks list --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "List bookmarks with limit and cursor".to_string(),
+                        command: "xcom-rs bookmarks list --limit 20 --cursor <next_token> --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "List bookmarks as NDJSON stream".to_string(),
+                        command: "xcom-rs bookmarks list --output ndjson".to_string(),
                     },
                 ],
             },
