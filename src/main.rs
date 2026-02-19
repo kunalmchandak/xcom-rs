@@ -120,6 +120,9 @@ fn main() {
             &create_meta,
             output_format,
         ),
+        Commands::Search { command } => {
+            handlers::search::handle_search(command, &create_meta, output_format)
+        }
         Commands::Timeline { command } => {
             handlers::timeline::handle_timeline(command, &create_meta, output_format)
         }

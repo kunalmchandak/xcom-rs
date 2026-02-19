@@ -9,6 +9,7 @@ pub mod introspection;
 pub mod logging;
 pub mod output;
 pub mod protocol;
+pub mod search;
 pub mod skills;
 pub mod test_utils;
 pub mod timeline;
