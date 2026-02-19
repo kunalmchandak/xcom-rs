@@ -12,4 +12,5 @@ pub mod protocol;
 pub mod search;
 pub mod skills;
 pub mod test_utils;
+pub mod timeline;
 pub mod tweets;

@@ -171,6 +171,10 @@ impl CostEstimator {
         rate_table.insert("search.tweets".to_string(), 3);
         rate_table.insert("search.recent".to_string(), 3);
         rate_table.insert("search.users".to_string(), 2);
+        // Timeline operation rates
+        rate_table.insert("timeline.home".to_string(), 2);
+        rate_table.insert("timeline.mentions".to_string(), 2);
+        rate_table.insert("timeline.user".to_string(), 1);
 
         Self {
             rate_table,
