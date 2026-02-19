@@ -27,3 +27,7 @@
 
 - [x] `tweets conversation` のレスポンスに `data.conversation_id` を含める（`src/tweets/models.rs` の `ConversationResult`、`src/tweets/client.rs` の `fetch_conversation`、`src/introspection.rs` の `tweets conversation` output schema を更新し、`src/tweets/commands.rs` のテストで検証する）
 - [x] `tweets thread` 失敗時に `failedIndex` と `createdTweetIds` を含む構造化エラーを返す（`src/tweets/commands.rs::TweetCommand::thread` で部分失敗情報を保持する専用エラーを実装し、`src/handlers/tweets.rs::handle_thread` で error details に反映、失敗系テストを追加する）
+
+## Acceptance #2 Failure Follow-up
+
+- [x] Git working tree をクリーンにしてから再受け入れする（`git status --porcelain` が空になるまで、以下を整理: `Cargo.toml`; `openspec/changes/add-timeline-commands/tasks.md`; `openspec/changes/add-timeline-commands/design.md -> openspec/changes/archive/2026-02-19-add-timeline-commands/design.md`; `openspec/changes/add-timeline-commands/proposal.md -> openspec/changes/archive/2026-02-19-add-timeline-commands/proposal.md`; `openspec/changes/add-timeline-commands/specs/timeline-reads/spec.md -> openspec/changes/archive/2026-02-19-add-timeline-commands/specs/timeline-reads/spec.md`; `openspec/changes/archive/2026-02-19-add-timeline-commands/tasks.md`; `openspec/specs/timeline-reads/spec.md`; `src/billing/storage.rs`; `src/cli.rs`; `src/handlers/mod.rs`; `src/handlers/timeline.rs`; `src/introspection.rs`; `src/lib.rs`; `src/main.rs`; `src/timeline/commands.rs`; `src/timeline/mod.rs`; `src/timeline/models.rs` — 確認: `git status --porcelain` は tasks.md のみを示し、全実装ファイルはコミット済み。ビルド・テスト・クリップ・フォーマットが全て合格）
