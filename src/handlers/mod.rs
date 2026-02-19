@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod billing;
 pub mod bookmarks;
+pub mod completion;
 pub mod demo;
 pub mod doctor;
 pub mod introspection;
