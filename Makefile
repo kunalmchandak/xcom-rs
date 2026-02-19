@@ -1,6 +1,6 @@
 # Makefile for xcom-rs
 
-.PHONY: build help install release test clean fmt lint check setup pre-commit-hooks bump-patch bump-minor bump-major index publish publish-tag
+.PHONY: build help install release test test-integration clean fmt lint check setup pre-commit-hooks bump-patch bump-minor bump-major index publish publish-tag
 
 # Default target - build debug version
 build:
@@ -14,7 +14,8 @@ help:
 	@echo "  make build             - Build debug version"
 	@echo "  make install           - Install the binary to ~/.cargo/bin"
 	@echo "  make release           - Build optimized release version"
-	@echo "  make test              - Run all tests"
+	@echo "  make test              - Run lib + doc tests (fast)"
+	@echo "  make test-integration  - Run integration tests (slow, requires external cargo run)"
 	@echo "  make clean             - Clean build artifacts"
 	@echo "  make fmt               - Format code with rustfmt"
 	@echo "  make lint              - Run clippy linter"
@@ -40,10 +41,17 @@ release:
 	cargo build --release
 	@echo "Release binary: target/release/xcom-rs"
 
-# Run tests
+# Run tests (lib + doc tests only; integration tests require external process and are slow)
 test:
-	@echo "Running tests..."
-	cargo test --verbose
+	@echo "Running lib tests..."
+	cargo test --lib --verbose
+	@echo "Running doc tests..."
+	cargo test --doc --verbose
+
+# Run integration tests (requires external 'cargo run', can be slow)
+test-integration:
+	@echo "Running integration tests..."
+	cargo test --test '*' --verbose
 
 # Clean build artifacts
 clean:

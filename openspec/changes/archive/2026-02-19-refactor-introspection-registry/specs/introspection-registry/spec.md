@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: コマンドメタデータの一貫性
-`xcom-rs` は、`commands` と `help` が同一のコマンドメタデータに基づき一貫した情報を返さなければならない。
+`xcom-rs` MUST return consistent information from `commands` and `help` based on the same command metadata source.
 
 #### Scenario: 一覧とヘルプの整合性
 - **Given** `commands` がコマンド一覧を返す
