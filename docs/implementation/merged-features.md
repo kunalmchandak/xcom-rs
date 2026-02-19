@@ -1,4 +1,4 @@
-# Implementation Summary
+# Implementation Summary (Merged Features)
 
 This branch now contains both sets of delivered capabilities:
 

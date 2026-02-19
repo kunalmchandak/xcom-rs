@@ -5,7 +5,7 @@
 All 8 tasks from `openspec/changes/plan-headless-auth-and-billing/tasks.md` have been completed and validated.
 
 ### Task 1: Auth Status Command ✅
-**Requirement**: `auth status --output json` のレスポンス型を実装し、`authenticated` `authMode` `scopes` `nextSteps` を返す
+**Requirement**: Implement the response type for `auth status --output json` and return `authenticated`, `authMode`, `scopes`, and `nextSteps`.
 
 **Implementation**: 
 - Module: `src/auth.rs` (AuthStatus struct)
@@ -24,7 +24,7 @@ $ cargo run -- auth status --output json
 ✅ Returns `authenticated=false` and `nextSteps` array
 
 ### Task 2: Auth Export/Import ✅
-**Requirement**: `auth export` / `auth import` の入出力仕様を実装し、非対話モードで往復可能にする
+**Requirement**: Implement the input/output contract for `auth export` and `auth import`, and make the roundtrip work in non-interactive mode.
 
 **Implementation**:
 - Module: `src/auth.rs` (AuthStore::export/import)
@@ -38,7 +38,7 @@ $ cargo run -- auth status --output json
 ✅ Export/import roundtrip works correctly
 
 ### Task 3: Non-Interactive Auth Error ✅
-**Requirement**: `--non-interactive` 時の認証未完了エラーを構造化し、ブラウザ誘導の代わりに手順を返す
+**Requirement**: In `--non-interactive` mode, return a structured auth/incomplete error that provides steps instead of browser guidance.
 
 **Implementation**:
 - Module: `src/context.rs` (ExecutionContext::check_interaction_required)
@@ -59,7 +59,7 @@ $ cargo run -- demo-interactive --non-interactive --output json
 ✅ Returns structured error with `nextSteps`
 
 ### Task 4: Billing Estimate ✅
-**Requirement**: `billing estimate` を実装し、操作別に `cost.credits` と `cost.usdEstimated` を返す
+**Requirement**: Implement `billing estimate` and return `cost.credits` and `cost.usdEstimated` per operation.
 
 **Implementation**:
 - Module: `src/billing.rs` (CostEstimator, BillingEstimate)
@@ -80,7 +80,7 @@ $ cargo run -- billing estimate tweets.create --text "hello" --output json
 ✅ Returns both `credits` and `usdEstimated` fields
 
 ### Task 5: Max Cost Credits Guard ✅
-**Requirement**: `--max-cost-credits` ガードを実装し、見積超過時は実行前に失敗させる
+**Requirement**: Implement the `--max-cost-credits` guard and fail before execution when the estimated cost exceeds the maximum.
 
 **Implementation**:
 - Module: `src/context.rs` (ExecutionContext::check_max_cost)
@@ -99,7 +99,7 @@ $ cargo run -- billing estimate tweets.create --text "hello" --max-cost-credits 
 ✅ Returns `COST_LIMIT_EXCEEDED` error when limit is exceeded
 
 ### Task 6: Budget Daily Credits ✅
-**Requirement**: `--budget-daily-credits` のローカル日次集計を実装する
+**Requirement**: Implement local daily aggregation and enforcement for `--budget-daily-credits`.
 
 **Implementation**:
 - Module: `src/billing.rs` (BudgetTracker)
@@ -113,7 +113,7 @@ $ cargo run -- billing estimate tweets.create --text "hello" --max-cost-credits 
 ✅ Daily budget tracking and enforcement implemented
 
 ### Task 7: Dry Run Mode ✅
-**Requirement**: `--dry-run` を実装し、課金ゼロで見積のみ返す
+**Requirement**: Implement `--dry-run` and return estimates only with zero billing.
 
 **Implementation**:
 - Global flag: `--dry-run` in `src/cli.rs`
@@ -137,7 +137,7 @@ $ cargo run -- billing estimate tweets.create --text "hello" --dry-run --output 
 ✅ Returns `credits=0` and `meta.dryRun=true`
 
 ### Task 8: Stub/Fixture Tests ✅
-**Requirement**: 外部依存を排除するため、認証・課金のstub/fixtureテストを追加する
+**Requirement**: Add stub/fixture tests for auth and billing so the suite can be validated without external dependencies.
 
 **Implementation**:
 - Unit tests: `src/auth.rs` (7 tests)

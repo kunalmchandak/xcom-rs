@@ -141,6 +141,12 @@ xcom-rs install-skills --yes
 
 For developer setup, workflows, and repository layout, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Docs
+
+- CLI examples: [docs/examples.md](docs/examples.md)
+- Implementation notes: `docs/implementation/`
+- Validation reports: `docs/validation/`
+
 ## License
 
 MIT
