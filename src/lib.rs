@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod billing;
+pub mod bookmarks;
 pub mod cli;
 pub mod context;
 pub mod doctor;
