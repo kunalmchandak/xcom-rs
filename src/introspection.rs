@@ -181,6 +181,104 @@ impl CommandsList {
                     has_cost: true,
                 },
                 CommandInfo {
+                    name: "tweets reply".to_string(),
+                    description: "Reply to a tweet".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "tweet_id".to_string(),
+                            description: "ID of the tweet to reply to".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "text".to_string(),
+                            description: "Reply text content".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "client_request_id".to_string(),
+                            description:
+                                "Client request ID for idempotency (auto-generated if not provided)"
+                                    .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "if_exists".to_string(),
+                            description: "Policy when operation with same client_request_id exists"
+                                .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: Some("return".to_string()),
+                        },
+                    ],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets thread".to_string(),
+                    description: "Post a thread of tweets (sequential replies)".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "texts".to_string(),
+                            description:
+                                "Tweet texts (at least one; first is standalone, rest are replies)"
+                                    .to_string(),
+                            required: true,
+                            arg_type: "array<string>".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "client_request_id_prefix".to_string(),
+                            description: "Prefix for generating per-tweet client_request_ids"
+                                .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "if_exists".to_string(),
+                            description: "Policy when operation with same client_request_id exists"
+                                .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: Some("return".to_string()),
+                        },
+                    ],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets show".to_string(),
+                    description: "Show a single tweet by ID".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to fetch".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets conversation".to_string(),
+                    description: "Retrieve a conversation tree starting from a tweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID (root of the conversation)".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
                     name: "timeline.home".to_string(),
                     description: "Get home timeline (reverse chronological feed)".to_string(),
                     arguments: vec![
@@ -615,6 +713,160 @@ impl CommandSchema {
                     }
                 })),
             },
+            "tweets reply" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id", "text"],
+                    "properties": {
+                        "tweet_id": { "type": "string" },
+                        "text": { "type": "string" },
+                        "client_request_id": { "type": "string" },
+                        "if_exists": { "type": "string", "enum": ["return", "error"], "default": "return" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet", "meta"],
+                    "properties": {
+                        "tweet": {
+                            "type": "object",
+                            "required": ["id"],
+                            "properties": {
+                                "id": { "type": "string" },
+                                "text": { "type": "string" },
+                                "author_id": { "type": "string" },
+                                "created_at": { "type": "string" },
+                                "conversation_id": { "type": "string" },
+                                "referenced_tweets": { "type": "array" }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "required": ["clientRequestId"],
+                            "properties": {
+                                "clientRequestId": { "type": "string" },
+                                "fromCache": { "type": "boolean" }
+                            }
+                        }
+                    }
+                })),
+            },
+            "tweets thread" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["texts"],
+                    "properties": {
+                        "texts": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+                        "client_request_id_prefix": { "type": "string" },
+                        "if_exists": { "type": "string", "enum": ["return", "error"], "default": "return" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweets", "meta"],
+                    "properties": {
+                        "tweets": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "text": { "type": "string" }
+                                }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "required": ["count", "createdTweetIds"],
+                            "properties": {
+                                "count": { "type": "integer" },
+                                "failedIndex": { "type": "integer" },
+                                "createdTweetIds": { "type": "array", "items": { "type": "string" } },
+                                "fromCache": { "type": "boolean" }
+                            }
+                        }
+                    }
+                })),
+            },
+            "tweets show" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id"],
+                    "properties": {
+                        "tweet_id": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet"],
+                    "properties": {
+                        "tweet": {
+                            "type": "object",
+                            "required": ["id"],
+                            "properties": {
+                                "id": { "type": "string" },
+                                "text": { "type": "string" },
+                                "author_id": { "type": "string" },
+                                "created_at": { "type": "string" },
+                                "conversation_id": { "type": "string" },
+                                "referenced_tweets": { "type": "array" }
+                            }
+                        }
+                    }
+                })),
+            },
+            "tweets conversation" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id"],
+                    "properties": {
+                        "tweet_id": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["conversation_id", "posts", "edges"],
+                    "properties": {
+                        "conversation_id": {
+                            "type": "string",
+                            "description": "The conversation_id that identifies this conversation thread"
+                        },
+                        "posts": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "text": { "type": "string" },
+                                    "conversation_id": { "type": "string" },
+                                    "referenced_tweets": { "type": "array" }
+                                }
+                            }
+                        },
+                        "edges": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["parent_id", "child_id"],
+                                "properties": {
+                                    "parent_id": { "type": "string" },
+                                    "child_id": { "type": "string" }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
             "timeline.home" | "timeline.mentions" => Self {
                 command: command.to_string(),
                 input_schema: serde_json::json!({
@@ -923,6 +1175,72 @@ impl CommandHelp {
                         command: "xcom-rs search users \"rust\" --output ndjson".to_string(),
                     },
                 ],
+            },
+            "tweets reply" => Self {
+                command: command.to_string(),
+                description: "Reply to a tweet (uses POST /2/tweets with reply.in_reply_to_tweet_id)"
+                    .to_string(),
+                usage: "xcom-rs tweets reply <tweet_id> \"<text>\" [--client-request-id <id>] [--if-exists return|error] [--output json|yaml|text]"
+                    .to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Reply to a tweet".to_string(),
+                        command: "xcom-rs tweets reply 1234567890 \"Great post!\" --output json"
+                            .to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Reply with idempotency key".to_string(),
+                        command: "xcom-rs tweets reply 1234567890 \"Reply\" --client-request-id my-reply-001 --output json"
+                            .to_string(),
+                    },
+                ],
+            },
+            "tweets thread" => Self {
+                command: command.to_string(),
+                description: "Post a thread of tweets (first is standalone, rest are sequential replies)"
+                    .to_string(),
+                usage: "xcom-rs tweets thread \"<t1>\" \"<t2>\" ... [--client-request-id-prefix <prefix>] [--if-exists return|error] [--output json|yaml|text]"
+                    .to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Post a two-tweet thread".to_string(),
+                        command: "xcom-rs tweets thread \"First tweet\" \"Second tweet\" --output json"
+                            .to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Post thread with idempotency prefix".to_string(),
+                        command: "xcom-rs tweets thread \"A\" \"B\" \"C\" --client-request-id-prefix thread-001 --output json"
+                            .to_string(),
+                    },
+                ],
+            },
+            "tweets show" => Self {
+                command: command.to_string(),
+                description: "Show a single tweet by ID (uses GET /2/tweets/{id})".to_string(),
+                usage: "xcom-rs tweets show <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![ExampleInfo {
+                    description: "Show a tweet by ID".to_string(),
+                    command: "xcom-rs tweets show 1234567890 --output json".to_string(),
+                }],
+            },
+            "tweets conversation" => Self {
+                command: command.to_string(),
+                description: "Retrieve a conversation tree (uses GET /2/tweets/{id} then GET /2/tweets/search/recent?query=conversation_id:<id>)"
+                    .to_string(),
+                usage: "xcom-rs tweets conversation <tweet_id> [--output json|yaml|text]"
+                    .to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![ExampleInfo {
+                    description: "Fetch conversation tree for a tweet".to_string(),
+                    command: "xcom-rs tweets conversation 1234567890 --output json".to_string(),
+                }],
             },
             "timeline.home" => Self {
                 command: command.to_string(),

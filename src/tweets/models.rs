@@ -13,8 +13,40 @@ pub struct Tweet {
     pub created_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edit_history_tweet_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub in_reply_to_user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub referenced_tweets: Option<Vec<ReferencedTweet>>,
     #[serde(flatten)]
     pub additional_fields: HashMap<String, serde_json::Value>,
+}
+
+/// Referenced tweet (e.g., reply, quoted)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReferencedTweet {
+    #[serde(rename = "type")]
+    pub ref_type: String,
+    pub id: String,
+}
+
+/// An edge in the conversation tree (parent -> child)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationEdge {
+    pub parent_id: String,
+    pub child_id: String,
+}
+
+/// Result of a conversation retrieval
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationResult {
+    /// The conversation_id that identifies this conversation thread
+    pub conversation_id: String,
+    /// All posts in the conversation (flat list)
+    pub posts: Vec<Tweet>,
+    /// Parent-child edges for tree reconstruction
+    pub edges: Vec<ConversationEdge>,
 }
 
 /// Metadata returned with tweet operations
@@ -34,6 +66,9 @@ pub enum TweetFields {
     AuthorId,
     CreatedAt,
     EditHistoryTweetIds,
+    ConversationId,
+    InReplyToUserId,
+    ReferencedTweets,
 }
 
 impl TweetFields {
@@ -44,6 +79,9 @@ impl TweetFields {
             "author_id" => Some(Self::AuthorId),
             "created_at" => Some(Self::CreatedAt),
             "edit_history_tweet_ids" => Some(Self::EditHistoryTweetIds),
+            "conversation_id" => Some(Self::ConversationId),
+            "in_reply_to_user_id" => Some(Self::InReplyToUserId),
+            "referenced_tweets" => Some(Self::ReferencedTweets),
             _ => None,
         }
     }
@@ -55,6 +93,9 @@ impl TweetFields {
             Self::AuthorId => "author_id",
             Self::CreatedAt => "created_at",
             Self::EditHistoryTweetIds => "edit_history_tweet_ids",
+            Self::ConversationId => "conversation_id",
+            Self::InReplyToUserId => "in_reply_to_user_id",
+            Self::ReferencedTweets => "referenced_tweets",
         }
     }
 
@@ -73,6 +114,9 @@ impl Tweet {
             author_id: None,
             created_at: None,
             edit_history_tweet_ids: None,
+            conversation_id: None,
+            in_reply_to_user_id: None,
+            referenced_tweets: None,
             additional_fields: HashMap::new(),
         }
     }
@@ -89,6 +133,13 @@ impl Tweet {
                 TweetFields::CreatedAt => tweet.created_at = self.created_at.clone(),
                 TweetFields::EditHistoryTweetIds => {
                     tweet.edit_history_tweet_ids = self.edit_history_tweet_ids.clone()
+                }
+                TweetFields::ConversationId => tweet.conversation_id = self.conversation_id.clone(),
+                TweetFields::InReplyToUserId => {
+                    tweet.in_reply_to_user_id = self.in_reply_to_user_id.clone()
+                }
+                TweetFields::ReferencedTweets => {
+                    tweet.referenced_tweets = self.referenced_tweets.clone()
                 }
             }
         }
