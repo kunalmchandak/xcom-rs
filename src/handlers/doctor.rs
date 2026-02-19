@@ -22,17 +22,22 @@ impl ApiProber for XApiProber {
         // adding a new HTTP dependency.  A successful TCP handshake confirms
         // basic network reachability.
         use std::net::TcpStream;
-        use std::time::Duration;
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
         match TcpStream::connect(("api.twitter.com", 443_u16)) {
             Ok(stream) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
                 // Set a read timeout to avoid blocking indefinitely.
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                Ok(ApiProbeResult::ok(200))
+                Ok(ApiProbeResult::ok(200, duration_ms))
             }
-            Err(e) => Ok(ApiProbeResult::failed(format!(
-                "TCP connection to api.twitter.com:443 failed: {}",
-                e
-            ))),
+            Err(e) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                Ok(ApiProbeResult::failed(
+                    format!("TCP connection to api.twitter.com:443 failed: {}", e),
+                    duration_ms,
+                ))
+            }
         }
     }
 }

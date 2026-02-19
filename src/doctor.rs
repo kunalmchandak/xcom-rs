@@ -41,9 +41,9 @@ pub struct DoctorDiagnostics {
     #[serde(rename = "scopeCheck")]
     pub scope_check: ScopeCheck,
 
-    /// API probe result (present only when --probe was specified)
-    #[serde(rename = "apiProbe", skip_serializing_if = "Option::is_none")]
-    pub api_probe: Option<ApiProbeResult>,
+    /// API probe result (always present; status is "skipped" when --probe was not specified)
+    #[serde(rename = "apiProbe")]
+    pub api_probe: ApiProbeResult,
 
     /// Any warnings encountered during diagnostics
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,6 +114,10 @@ pub struct ApiProbeResult {
     /// Probe status
     pub status: ProbeStatus,
 
+    /// Duration of the probe in milliseconds (0 when skipped)
+    #[serde(rename = "durationMs")]
+    pub duration_ms: u64,
+
     /// HTTP status code returned (if probe was executed)
     #[serde(rename = "httpStatus", skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
@@ -128,33 +132,37 @@ impl ApiProbeResult {
     pub fn skipped() -> Self {
         Self {
             status: ProbeStatus::Skipped,
+            duration_ms: 0,
             http_status: None,
             message: Some("Probe not requested; pass --probe to enable".to_string()),
         }
     }
 
     /// Create a successful probe result
-    pub fn ok(http_status: u16) -> Self {
+    pub fn ok(http_status: u16, duration_ms: u64) -> Self {
         Self {
             status: ProbeStatus::Ok,
+            duration_ms,
             http_status: Some(http_status),
             message: Some("API is reachable".to_string()),
         }
     }
 
     /// Create a failed probe result
-    pub fn failed(message: String) -> Self {
+    pub fn failed(message: String, duration_ms: u64) -> Self {
         Self {
             status: ProbeStatus::Failed,
+            duration_ms,
             http_status: None,
             message: Some(message),
         }
     }
 
     /// Create a failed probe result with an HTTP status code
-    pub fn failed_with_status(http_status: u16, message: String) -> Self {
+    pub fn failed_with_status(http_status: u16, message: String, duration_ms: u64) -> Self {
         Self {
             status: ProbeStatus::Failed,
+            duration_ms,
             http_status: Some(http_status),
             message: Some(message),
         }
@@ -302,7 +310,7 @@ pub fn collect_diagnostics(
     // Get execution mode settings
     let execution_mode = ExecutionMode::from_context(ctx);
 
-    // Run API probe if requested
+    // Run API probe if requested; always include apiProbe in the output
     let api_probe = match prober {
         Some(p) => {
             let result = p.probe()?;
@@ -314,9 +322,16 @@ pub fn collect_diagnostics(
                 next_steps
                     .push("Verify that your access token is valid and not expired".to_string());
             }
-            Some(result)
+            result
         }
-        None => None,
+        None => {
+            // Probe was not requested; advise the user how to enable it
+            next_steps.push(
+                "To verify API connectivity, re-run with --probe: xcom-rs doctor --probe"
+                    .to_string(),
+            );
+            ApiProbeResult::skipped()
+        }
     };
 
     Ok(DoctorDiagnostics {
@@ -355,13 +370,13 @@ mod tests {
     impl MockProber {
         fn ok() -> Self {
             Self {
-                result: ApiProbeResult::ok(200),
+                result: ApiProbeResult::ok(200, 42),
             }
         }
 
         fn failed(msg: &str) -> Self {
             Self {
-                result: ApiProbeResult::failed(msg.to_string()),
+                result: ApiProbeResult::failed(msg.to_string(), 100),
             }
         }
     }
@@ -442,8 +457,12 @@ mod tests {
         assert!(!diagnostics.auth_status.authenticated);
         assert!(!diagnostics.execution_mode.non_interactive);
         assert!(!diagnostics.execution_mode.dry_run);
-        // Probe not requested → field is None
-        assert!(diagnostics.api_probe.is_none());
+        // Probe not requested → status is "skipped"
+        assert_eq!(diagnostics.api_probe.status, ProbeStatus::Skipped);
+        assert_eq!(diagnostics.api_probe.duration_ms, 0);
+        // next_steps should include probe hint
+        let next_steps = diagnostics.next_steps.unwrap_or_default();
+        assert!(next_steps.iter().any(|s| s.contains("--probe")));
         // Scope check shows all missing
         assert!(!diagnostics.scope_check.ok);
         assert_eq!(
@@ -475,8 +494,8 @@ mod tests {
         // All scopes present → ok
         assert!(diagnostics.scope_check.ok);
         assert!(diagnostics.scope_check.missing_scopes.is_empty());
-        // No probe
-        assert!(diagnostics.api_probe.is_none());
+        // No probe requested → status is "skipped"
+        assert_eq!(diagnostics.api_probe.status, ProbeStatus::Skipped);
     }
 
     #[test]
@@ -512,9 +531,11 @@ mod tests {
         let result = collect_diagnostics(&auth_store, &ctx, Some(&prober));
         assert!(result.is_ok());
         let diagnostics = result.unwrap();
-        let probe = diagnostics.api_probe.expect("api_probe should be present");
+        let probe = &diagnostics.api_probe;
         assert_eq!(probe.status, ProbeStatus::Ok);
         assert_eq!(probe.http_status, Some(200));
+        // durationMs should be set (42 from mock)
+        assert_eq!(probe.duration_ms, 42);
     }
 
     #[test]
@@ -525,8 +546,9 @@ mod tests {
         let result = collect_diagnostics(&auth_store, &ctx, Some(&prober));
         assert!(result.is_ok());
         let diagnostics = result.unwrap();
-        let probe = diagnostics.api_probe.expect("api_probe should be present");
+        let probe = &diagnostics.api_probe;
         assert_eq!(probe.status, ProbeStatus::Failed);
+        assert_eq!(probe.duration_ms, 100);
         // Warnings and next_steps should be populated
         let warnings = diagnostics.warnings.unwrap_or_default();
         assert!(warnings.iter().any(|w| w.contains("API probe failed")));
@@ -535,11 +557,15 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_diagnostics_skipped_probe_returns_none() {
-        // Passing None means probe is skipped and api_probe field is absent
+    fn test_collect_diagnostics_skipped_probe_returns_skipped_status() {
+        // Passing None means probe is skipped; api_probe is always present with status=skipped
         let auth_store = AuthStore::new();
         let ctx = ExecutionContext::new(false, None, None, None, false);
         let diagnostics = collect_diagnostics(&auth_store, &ctx, None).unwrap();
-        assert!(diagnostics.api_probe.is_none());
+        assert_eq!(diagnostics.api_probe.status, ProbeStatus::Skipped);
+        assert_eq!(diagnostics.api_probe.duration_ms, 0);
+        // next_steps must include --probe hint
+        let next_steps = diagnostics.next_steps.unwrap_or_default();
+        assert!(next_steps.iter().any(|s| s.contains("--probe")));
     }
 }
