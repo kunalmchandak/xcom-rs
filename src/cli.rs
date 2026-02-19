@@ -102,6 +102,51 @@ pub enum Commands {
         #[command(subcommand)]
         command: SearchCommands,
     },
+
+    /// Timeline operations (home, mentions, user)
+    Timeline {
+        #[command(subcommand)]
+        command: TimelineCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TimelineCommands {
+    /// Get home timeline (reverse chronological feed)
+    Home {
+        /// Maximum number of tweets to return
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Pagination cursor token
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+
+    /// Get mentions timeline
+    Mentions {
+        /// Maximum number of tweets to return
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Pagination cursor token
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+
+    /// Get tweets from a specific user
+    User {
+        /// User handle (without @)
+        handle: String,
+
+        /// Maximum number of tweets to return
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Pagination cursor token
+        #[arg(long)]
+        cursor: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -291,6 +336,110 @@ mod tests {
     fn test_cli_without_subcommand() {
         let cli = Cli::parse_from(["xcom-rs"]);
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn test_timeline_home_command() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "home"]);
+        if let Some(Commands::Timeline {
+            command: TimelineCommands::Home { limit, cursor },
+        }) = cli.command
+        {
+            assert_eq!(limit, 10);
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Timeline::Home command");
+        }
+    }
+
+    #[test]
+    fn test_timeline_home_with_limit() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "home", "--limit", "20"]);
+        if let Some(Commands::Timeline {
+            command: TimelineCommands::Home { limit, cursor },
+        }) = cli.command
+        {
+            assert_eq!(limit, 20);
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Timeline::Home command with limit");
+        }
+    }
+
+    #[test]
+    fn test_timeline_home_with_cursor() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "home", "--cursor", "next_token_123"]);
+        if let Some(Commands::Timeline {
+            command: TimelineCommands::Home { limit: _, cursor },
+        }) = cli.command
+        {
+            assert_eq!(cursor, Some("next_token_123".to_string()));
+        } else {
+            panic!("Expected Timeline::Home command with cursor");
+        }
+    }
+
+    #[test]
+    fn test_timeline_mentions_command() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "mentions"]);
+        if let Some(Commands::Timeline {
+            command: TimelineCommands::Mentions { limit, cursor },
+        }) = cli.command
+        {
+            assert_eq!(limit, 10);
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Timeline::Mentions command");
+        }
+    }
+
+    #[test]
+    fn test_timeline_user_command() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "user", "johndoe"]);
+        if let Some(Commands::Timeline {
+            command:
+                TimelineCommands::User {
+                    handle,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(handle, "johndoe");
+            assert_eq!(limit, 10);
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Timeline::User command");
+        }
+    }
+
+    #[test]
+    fn test_timeline_user_with_options() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "timeline",
+            "user",
+            "johndoe",
+            "--limit",
+            "5",
+            "--cursor",
+            "cursor_abc",
+        ]);
+        if let Some(Commands::Timeline {
+            command:
+                TimelineCommands::User {
+                    handle,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(handle, "johndoe");
+            assert_eq!(limit, 5);
+            assert_eq!(cursor, Some("cursor_abc".to_string()));
+        } else {
+            panic!("Expected Timeline::User command with options");
+        }
     }
 
     #[test]

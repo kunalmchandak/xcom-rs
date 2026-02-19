@@ -278,6 +278,79 @@ impl CommandsList {
                     risk: RiskLevel::Safe,
                     has_cost: true,
                 },
+                CommandInfo {
+                    name: "timeline.home".to_string(),
+                    description: "Get home timeline (reverse chronological feed)".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of tweets to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor token".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "timeline.mentions".to_string(),
+                    description: "Get mentions timeline".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of tweets to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor token".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "timeline.user".to_string(),
+                    description: "Get tweets from a specific user".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "handle".to_string(),
+                            description: "User handle (without @)".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of tweets to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor token".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
             ],
         }
     }
@@ -324,6 +397,41 @@ impl CommandSchema {
                     "type": "object",
                     "properties": {
                         "traceId": { "type": "string" }
+                    }
+                }
+            }
+        })
+    }
+
+    /// Helper to create the common timeline data schema
+    fn timeline_output_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["tweets"],
+            "properties": {
+                "tweets": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["id"],
+                        "properties": {
+                            "id": { "type": "string" },
+                            "text": { "type": "string" },
+                            "author_id": { "type": "string" },
+                            "created_at": { "type": "string", "format": "date-time" }
+                        }
+                    }
+                },
+                "meta": {
+                    "type": "object",
+                    "properties": {
+                        "pagination": {
+                            "type": "object",
+                            "properties": {
+                                "next_token": { "type": "string" },
+                                "previous_token": { "type": "string" }
+                            }
+                        }
                     }
                 }
             }
@@ -746,6 +854,32 @@ impl CommandSchema {
                     }
                 })),
             },
+            "timeline.home" | "timeline.mentions" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(Self::timeline_output_schema()),
+            },
+            "timeline.user" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["handle"],
+                    "properties": {
+                        "handle": { "type": "string" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(Self::timeline_output_schema()),
+            },
             _ => Self {
                 command: command.to_string(),
                 input_schema: serde_json::json!({
@@ -1077,6 +1211,61 @@ impl CommandHelp {
                     command: "xcom-rs tweets conversation 1234567890 --output json".to_string(),
                 }],
             },
+            "timeline.home" => Self {
+                command: command.to_string(),
+                description: "Get home timeline (reverse chronological feed)".to_string(),
+                usage: "xcom-rs timeline home [--limit <n>] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Get home timeline in JSON format".to_string(),
+                        command: "xcom-rs timeline home --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get 20 tweets with NDJSON output".to_string(),
+                        command: "xcom-rs timeline home --limit 20 --output ndjson".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get next page using cursor".to_string(),
+                        command: "xcom-rs timeline home --cursor next_token_10 --output json".to_string(),
+                    },
+                ],
+            },
+            "timeline.mentions" => Self {
+                command: command.to_string(),
+                description: "Get mentions timeline".to_string(),
+                usage: "xcom-rs timeline mentions [--limit <n>] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Get mentions in JSON format".to_string(),
+                        command: "xcom-rs timeline mentions --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get 5 mentions with NDJSON output".to_string(),
+                        command: "xcom-rs timeline mentions --limit 5 --output ndjson".to_string(),
+                    },
+                ],
+            },
+            "timeline.user" => Self {
+                command: command.to_string(),
+                description: "Get tweets from a specific user".to_string(),
+                usage: "xcom-rs timeline user <handle> [--limit <n>] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Get tweets from user in JSON format".to_string(),
+                        command: "xcom-rs timeline user johndoe --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get 5 tweets from user with NDJSON output".to_string(),
+                        command: "xcom-rs timeline user johndoe --limit 5 --output ndjson".to_string(),
+                    },
+                ],
+            },
             _ => Self {
                 command: command.to_string(),
                 description: format!("Help for {}", command),
@@ -1103,11 +1292,82 @@ mod tests {
     }
 
     #[test]
+    fn test_commands_list_includes_timeline() {
+        let list = CommandsList::new();
+        assert!(
+            list.commands.iter().any(|c| c.name == "timeline.home"),
+            "timeline.home should be in commands list"
+        );
+        assert!(
+            list.commands.iter().any(|c| c.name == "timeline.mentions"),
+            "timeline.mentions should be in commands list"
+        );
+        assert!(
+            list.commands.iter().any(|c| c.name == "timeline.user"),
+            "timeline.user should be in commands list"
+        );
+
+        // timeline commands are read-only (safe) and have cost
+        let home_cmd = list
+            .commands
+            .iter()
+            .find(|c| c.name == "timeline.home")
+            .unwrap();
+        assert_eq!(home_cmd.risk, RiskLevel::Safe);
+        assert!(home_cmd.has_cost);
+
+        // timeline.user requires handle argument
+        let user_cmd = list
+            .commands
+            .iter()
+            .find(|c| c.name == "timeline.user")
+            .unwrap();
+        let handle_arg = user_cmd.arguments.iter().find(|a| a.name == "handle");
+        assert!(
+            handle_arg.is_some(),
+            "timeline.user should have handle argument"
+        );
+        assert!(
+            handle_arg.unwrap().required,
+            "handle argument should be required"
+        );
+    }
+
+    #[test]
     fn test_command_schema() {
         let schema = CommandSchema::for_command("commands");
         assert_eq!(schema.command, "commands");
         assert!(schema.input_schema.is_object());
         assert!(schema.output_schema.is_object());
+    }
+
+    #[test]
+    fn test_timeline_schema() {
+        for command in &["timeline.home", "timeline.mentions", "timeline.user"] {
+            let schema = CommandSchema::for_command(command);
+            assert_eq!(schema.command, *command);
+            assert!(schema.input_schema.is_object());
+            assert!(schema.output_schema.is_object());
+        }
+
+        // timeline.user requires handle
+        let user_schema = CommandSchema::for_command("timeline.user");
+        let required = user_schema.input_schema["required"].as_array().unwrap();
+        assert!(
+            required.iter().any(|v| v.as_str() == Some("handle")),
+            "timeline.user input schema should require handle"
+        );
+    }
+
+    #[test]
+    fn test_timeline_help() {
+        for command in &["timeline.home", "timeline.mentions", "timeline.user"] {
+            let help = CommandHelp::for_command(command);
+            assert_eq!(help.command, *command);
+            assert!(!help.exit_codes.is_empty());
+            assert!(!help.error_vocabulary.is_empty());
+            assert!(!help.examples.is_empty());
+        }
     }
 
     #[test]

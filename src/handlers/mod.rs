@@ -5,4 +5,5 @@ pub mod doctor;
 pub mod introspection;
 pub mod search;
 pub mod skills;
+pub mod timeline;
 pub mod tweets;
