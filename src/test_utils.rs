@@ -1,4 +1,53 @@
 /// Test utilities for coordinating test execution and creating test fixtures
+pub mod search_fixtures {
+    use crate::search::models::{SearchTweet, SearchUser};
+
+    /// Create sample tweet fixtures for search tests
+    pub fn create_tweet_fixtures(count: usize) -> Vec<SearchTweet> {
+        (0..count)
+            .map(|i| {
+                let mut tweet = SearchTweet::new(format!("fixture_tweet_{}", i));
+                tweet.text = Some(format!("Fixture tweet text {}", i));
+                tweet.author_id = Some(format!("fixture_user_{}", i));
+                tweet.created_at = Some("2024-01-01T00:00:00Z".to_string());
+                tweet
+            })
+            .collect()
+    }
+
+    /// Create sample user fixtures for search tests
+    pub fn create_user_fixtures(count: usize) -> Vec<SearchUser> {
+        (0..count)
+            .map(|i| {
+                let mut user = SearchUser::new(format!("fixture_user_{}", i));
+                user.name = Some(format!("Fixture User {}", i));
+                user.username = Some(format!("fixture_user_{}", i));
+                user.description = Some(format!("A fixture user {}", i));
+                user
+            })
+            .collect()
+    }
+}
+
+pub mod media_fixtures {
+    use crate::media::models::UploadResult;
+
+    /// Fixed media ID used across unit tests
+    pub const FIXTURE_MEDIA_ID: &str = "fixture_media_id_0000000000000001";
+
+    /// Create an UploadResult with the fixture media_id
+    pub fn create_upload_result() -> UploadResult {
+        UploadResult::new(FIXTURE_MEDIA_ID)
+    }
+
+    /// Create multiple UploadResult fixtures
+    pub fn create_upload_results(count: usize) -> Vec<UploadResult> {
+        (0..count)
+            .map(|i| UploadResult::new(format!("fixture_media_id_{:016}", i)))
+            .collect()
+    }
+}
+
 pub mod env_lock {
     use std::sync::Mutex;
 

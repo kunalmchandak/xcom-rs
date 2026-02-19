@@ -167,8 +167,20 @@ impl CostEstimator {
         // Example rates (stub data)
         rate_table.insert("tweets.create".to_string(), 5);
         rate_table.insert("tweets.read".to_string(), 1);
+        rate_table.insert("tweets.reply".to_string(), 5);
+        rate_table.insert("tweets.thread".to_string(), 5);
+        rate_table.insert("tweets.show".to_string(), 1);
+        rate_table.insert("tweets.conversation".to_string(), 3);
         rate_table.insert("users.read".to_string(), 1);
         rate_table.insert("search.tweets".to_string(), 3);
+        rate_table.insert("search.recent".to_string(), 3);
+        rate_table.insert("search.users".to_string(), 2);
+        // Timeline operation rates
+        rate_table.insert("timeline.home".to_string(), 2);
+        rate_table.insert("timeline.mentions".to_string(), 2);
+        rate_table.insert("timeline.user".to_string(), 1);
+        // Media operation rates
+        rate_table.insert("media.upload".to_string(), 10);
         // Engagement operation rates
         rate_table.insert("tweets.like".to_string(), 2);
         rate_table.insert("tweets.unlike".to_string(), 2);
@@ -250,6 +262,15 @@ mod tests {
         let params = HashMap::new();
         let cost = estimator.estimate("unknown.operation", &params);
         assert_eq!(cost.credits, 1);
+    }
+
+    #[test]
+    fn test_estimator_media_upload() {
+        let estimator = CostEstimator::new();
+        let params = HashMap::new();
+        let cost = estimator.estimate("media.upload", &params);
+        assert_eq!(cost.credits, 10);
+        assert_eq!(cost.usd_estimated, 0.01);
     }
 
     #[test]

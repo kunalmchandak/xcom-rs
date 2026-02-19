@@ -123,6 +123,248 @@ impl CommandsList {
                     has_cost: false,
                 },
                 CommandInfo {
+                    name: "search recent".to_string(),
+                    description: "Search recent tweets matching a query".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "query".to_string(),
+                            description: "Search query string".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of results to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "search users".to_string(),
+                    description: "Search users matching a query".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "query".to_string(),
+                            description: "Search query string".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of results to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets reply".to_string(),
+                    description: "Reply to a tweet".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "tweet_id".to_string(),
+                            description: "ID of the tweet to reply to".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "text".to_string(),
+                            description: "Reply text content".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "client_request_id".to_string(),
+                            description:
+                                "Client request ID for idempotency (auto-generated if not provided)"
+                                    .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "if_exists".to_string(),
+                            description: "Policy when operation with same client_request_id exists"
+                                .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: Some("return".to_string()),
+                        },
+                    ],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets thread".to_string(),
+                    description: "Post a thread of tweets (sequential replies)".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "texts".to_string(),
+                            description:
+                                "Tweet texts (at least one; first is standalone, rest are replies)"
+                                    .to_string(),
+                            required: true,
+                            arg_type: "array<string>".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "client_request_id_prefix".to_string(),
+                            description: "Prefix for generating per-tweet client_request_ids"
+                                .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "if_exists".to_string(),
+                            description: "Policy when operation with same client_request_id exists"
+                                .to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: Some("return".to_string()),
+                        },
+                    ],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets show".to_string(),
+                    description: "Show a single tweet by ID".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to fetch".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets conversation".to_string(),
+                    description: "Retrieve a conversation tree starting from a tweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID (root of the conversation)".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "timeline.home".to_string(),
+                    description: "Get home timeline (reverse chronological feed)".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of tweets to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor token".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "timeline.mentions".to_string(),
+                    description: "Get mentions timeline".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of tweets to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor token".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "timeline.user".to_string(),
+                    description: "Get tweets from a specific user".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "handle".to_string(),
+                            description: "User handle (without @)".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of tweets to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor token".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "media.upload".to_string(),
+                    description: "Upload a media file and return the media_id".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "path".to_string(),
+                        description: "Path to the media file to upload".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
+                CommandInfo {
                     name: "tweets like".to_string(),
                     description: "Like a tweet".to_string(),
                     arguments: vec![ArgumentInfo {
@@ -268,6 +510,41 @@ impl CommandSchema {
                     "type": "object",
                     "properties": {
                         "traceId": { "type": "string" }
+                    }
+                }
+            }
+        })
+    }
+
+    /// Helper to create the common timeline data schema
+    fn timeline_output_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "required": ["tweets"],
+            "properties": {
+                "tweets": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["id"],
+                        "properties": {
+                            "id": { "type": "string" },
+                            "text": { "type": "string" },
+                            "author_id": { "type": "string" },
+                            "created_at": { "type": "string", "format": "date-time" }
+                        }
+                    }
+                },
+                "meta": {
+                    "type": "object",
+                    "properties": {
+                        "pagination": {
+                            "type": "object",
+                            "properties": {
+                                "next_token": { "type": "string" },
+                                "previous_token": { "type": "string" }
+                            }
+                        }
                     }
                 }
             }
@@ -441,6 +718,296 @@ impl CommandSchema {
                                 }
                             }
                         }
+                    }
+                })),
+            },
+            "search recent" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": { "type": "string" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweets"],
+                    "properties": {
+                        "tweets": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "text": { "type": "string" },
+                                    "author_id": { "type": "string" },
+                                    "created_at": { "type": "string" }
+                                }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "properties": {
+                                "pagination": {
+                                    "type": "object",
+                                    "required": ["result_count"],
+                                    "properties": {
+                                        "next_token": { "type": "string" },
+                                        "prev_token": { "type": "string" },
+                                        "result_count": { "type": "integer" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+            "search users" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": { "type": "string" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["users"],
+                    "properties": {
+                        "users": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "name": { "type": "string" },
+                                    "username": { "type": "string" },
+                                    "description": { "type": "string" }
+                                }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "properties": {
+                                "pagination": {
+                                    "type": "object",
+                                    "required": ["result_count"],
+                                    "properties": {
+                                        "next_token": { "type": "string" },
+                                        "prev_token": { "type": "string" },
+                                        "result_count": { "type": "integer" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+            "tweets reply" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id", "text"],
+                    "properties": {
+                        "tweet_id": { "type": "string" },
+                        "text": { "type": "string" },
+                        "client_request_id": { "type": "string" },
+                        "if_exists": { "type": "string", "enum": ["return", "error"], "default": "return" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet", "meta"],
+                    "properties": {
+                        "tweet": {
+                            "type": "object",
+                            "required": ["id"],
+                            "properties": {
+                                "id": { "type": "string" },
+                                "text": { "type": "string" },
+                                "author_id": { "type": "string" },
+                                "created_at": { "type": "string" },
+                                "conversation_id": { "type": "string" },
+                                "referenced_tweets": { "type": "array" }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "required": ["clientRequestId"],
+                            "properties": {
+                                "clientRequestId": { "type": "string" },
+                                "fromCache": { "type": "boolean" }
+                            }
+                        }
+                    }
+                })),
+            },
+            "tweets thread" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["texts"],
+                    "properties": {
+                        "texts": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+                        "client_request_id_prefix": { "type": "string" },
+                        "if_exists": { "type": "string", "enum": ["return", "error"], "default": "return" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweets", "meta"],
+                    "properties": {
+                        "tweets": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "text": { "type": "string" }
+                                }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "required": ["count", "createdTweetIds"],
+                            "properties": {
+                                "count": { "type": "integer" },
+                                "failedIndex": { "type": "integer" },
+                                "createdTweetIds": { "type": "array", "items": { "type": "string" } },
+                                "fromCache": { "type": "boolean" }
+                            }
+                        }
+                    }
+                })),
+            },
+            "tweets show" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id"],
+                    "properties": {
+                        "tweet_id": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet"],
+                    "properties": {
+                        "tweet": {
+                            "type": "object",
+                            "required": ["id"],
+                            "properties": {
+                                "id": { "type": "string" },
+                                "text": { "type": "string" },
+                                "author_id": { "type": "string" },
+                                "created_at": { "type": "string" },
+                                "conversation_id": { "type": "string" },
+                                "referenced_tweets": { "type": "array" }
+                            }
+                        }
+                    }
+                })),
+            },
+            "tweets conversation" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id"],
+                    "properties": {
+                        "tweet_id": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["conversation_id", "posts", "edges"],
+                    "properties": {
+                        "conversation_id": {
+                            "type": "string",
+                            "description": "The conversation_id that identifies this conversation thread"
+                        },
+                        "posts": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "text": { "type": "string" },
+                                    "conversation_id": { "type": "string" },
+                                    "referenced_tweets": { "type": "array" }
+                                }
+                            }
+                        },
+                        "edges": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["parent_id", "child_id"],
+                                "properties": {
+                                    "parent_id": { "type": "string" },
+                                    "child_id": { "type": "string" }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+            "timeline.home" | "timeline.mentions" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(Self::timeline_output_schema()),
+            },
+            "timeline.user" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["handle"],
+                    "properties": {
+                        "handle": { "type": "string" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(Self::timeline_output_schema()),
+            },
+            "media.upload" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["path"],
+                    "properties": {
+                        "path": { "type": "string", "description": "Path to the media file to upload" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["media_id"],
+                    "properties": {
+                        "media_id": { "type": "string", "description": "The media ID returned by the X API" }
                     }
                 })),
             },
@@ -746,6 +1313,186 @@ impl CommandHelp {
                     },
                 ],
             },
+            "search recent" => Self {
+                command: command.to_string(),
+                description: "Search recent tweets matching a query (uses GET /2/tweets/search/recent)".to_string(),
+                usage: "xcom-rs search recent \"<query>\" [--limit N] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Search for recent tweets about Rust".to_string(),
+                        command: "xcom-rs search recent \"rust programming\" --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Search with pagination limit".to_string(),
+                        command: "xcom-rs search recent \"AI\" --limit 20 --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Paginate through search results".to_string(),
+                        command: "xcom-rs search recent \"AI\" --cursor cursor_20 --output ndjson".to_string(),
+                    },
+                ],
+            },
+            "search users" => Self {
+                command: command.to_string(),
+                description: "Search users matching a query (uses GET /2/users/search)".to_string(),
+                usage: "xcom-rs search users \"<query>\" [--limit N] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Search for users named Alice".to_string(),
+                        command: "xcom-rs search users \"alice\" --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Search users with limit".to_string(),
+                        command: "xcom-rs search users \"developer\" --limit 5 --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get users as NDJSON stream".to_string(),
+                        command: "xcom-rs search users \"rust\" --output ndjson".to_string(),
+                    },
+                ],
+            },
+            "tweets reply" => Self {
+                command: command.to_string(),
+                description: "Reply to a tweet (uses POST /2/tweets with reply.in_reply_to_tweet_id)"
+                    .to_string(),
+                usage: "xcom-rs tweets reply <tweet_id> \"<text>\" [--client-request-id <id>] [--if-exists return|error] [--output json|yaml|text]"
+                    .to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Reply to a tweet".to_string(),
+                        command: "xcom-rs tweets reply 1234567890 \"Great post!\" --output json"
+                            .to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Reply with idempotency key".to_string(),
+                        command: "xcom-rs tweets reply 1234567890 \"Reply\" --client-request-id my-reply-001 --output json"
+                            .to_string(),
+                    },
+                ],
+            },
+            "tweets thread" => Self {
+                command: command.to_string(),
+                description: "Post a thread of tweets (first is standalone, rest are sequential replies)"
+                    .to_string(),
+                usage: "xcom-rs tweets thread \"<t1>\" \"<t2>\" ... [--client-request-id-prefix <prefix>] [--if-exists return|error] [--output json|yaml|text]"
+                    .to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Post a two-tweet thread".to_string(),
+                        command: "xcom-rs tweets thread \"First tweet\" \"Second tweet\" --output json"
+                            .to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Post thread with idempotency prefix".to_string(),
+                        command: "xcom-rs tweets thread \"A\" \"B\" \"C\" --client-request-id-prefix thread-001 --output json"
+                            .to_string(),
+                    },
+                ],
+            },
+            "tweets show" => Self {
+                command: command.to_string(),
+                description: "Show a single tweet by ID (uses GET /2/tweets/{id})".to_string(),
+                usage: "xcom-rs tweets show <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![ExampleInfo {
+                    description: "Show a tweet by ID".to_string(),
+                    command: "xcom-rs tweets show 1234567890 --output json".to_string(),
+                }],
+            },
+            "tweets conversation" => Self {
+                command: command.to_string(),
+                description: "Retrieve a conversation tree (uses GET /2/tweets/{id} then GET /2/tweets/search/recent?query=conversation_id:<id>)"
+                    .to_string(),
+                usage: "xcom-rs tweets conversation <tweet_id> [--output json|yaml|text]"
+                    .to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![ExampleInfo {
+                    description: "Fetch conversation tree for a tweet".to_string(),
+                    command: "xcom-rs tweets conversation 1234567890 --output json".to_string(),
+                }],
+            },
+            "timeline.home" => Self {
+                command: command.to_string(),
+                description: "Get home timeline (reverse chronological feed)".to_string(),
+                usage: "xcom-rs timeline home [--limit <n>] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Get home timeline in JSON format".to_string(),
+                        command: "xcom-rs timeline home --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get 20 tweets with NDJSON output".to_string(),
+                        command: "xcom-rs timeline home --limit 20 --output ndjson".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get next page using cursor".to_string(),
+                        command: "xcom-rs timeline home --cursor next_token_10 --output json".to_string(),
+                    },
+                ],
+            },
+            "timeline.mentions" => Self {
+                command: command.to_string(),
+                description: "Get mentions timeline".to_string(),
+                usage: "xcom-rs timeline mentions [--limit <n>] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Get mentions in JSON format".to_string(),
+                        command: "xcom-rs timeline mentions --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get 5 mentions with NDJSON output".to_string(),
+                        command: "xcom-rs timeline mentions --limit 5 --output ndjson".to_string(),
+                    },
+                ],
+            },
+            "timeline.user" => Self {
+                command: command.to_string(),
+                description: "Get tweets from a specific user".to_string(),
+                usage: "xcom-rs timeline user <handle> [--limit <n>] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Get tweets from user in JSON format".to_string(),
+                        command: "xcom-rs timeline user johndoe --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get 5 tweets from user with NDJSON output".to_string(),
+                        command: "xcom-rs timeline user johndoe --limit 5 --output ndjson".to_string(),
+                    },
+                ],
+            },
+            "media.upload" => Self {
+                command: command.to_string(),
+                description: "Upload a media file to X and return the media_id (uses POST /2/media/upload)".to_string(),
+                usage: "xcom-rs media upload <path> [--output json|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Upload an image and get media_id in JSON format".to_string(),
+                        command: "xcom-rs media upload /path/to/image.jpg --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Upload a video file".to_string(),
+                        command: "xcom-rs media upload /path/to/video.mp4 --output json".to_string(),
+                    },
+                ],
+            },
             "tweets like" => Self {
                 command: command.to_string(),
                 description: "Like a tweet on X.com".to_string(),
@@ -859,11 +1606,124 @@ mod tests {
     }
 
     #[test]
+    fn test_commands_list_includes_media_upload() {
+        let list = CommandsList::new();
+        let media_cmd = list.commands.iter().find(|c| c.name == "media.upload");
+        assert!(
+            media_cmd.is_some(),
+            "media.upload should be in commands list"
+        );
+        let media_cmd = media_cmd.unwrap();
+        assert_eq!(media_cmd.risk, RiskLevel::Medium);
+        assert!(media_cmd.has_cost);
+        let path_arg = media_cmd.arguments.iter().find(|a| a.name == "path");
+        assert!(path_arg.is_some(), "media.upload should have path argument");
+        assert!(
+            path_arg.unwrap().required,
+            "path argument should be required"
+        );
+    }
+
+    #[test]
+    fn test_media_upload_schema() {
+        let schema = CommandSchema::for_command("media.upload");
+        assert_eq!(schema.command, "media.upload");
+        assert!(schema.input_schema.is_object());
+        assert!(schema.output_schema.is_object());
+        let required = schema.input_schema["required"].as_array().unwrap();
+        assert!(
+            required.iter().any(|v| v.as_str() == Some("path")),
+            "media.upload input schema should require path"
+        );
+    }
+
+    #[test]
+    fn test_media_upload_help() {
+        let help = CommandHelp::for_command("media.upload");
+        assert_eq!(help.command, "media.upload");
+        assert!(!help.exit_codes.is_empty());
+        assert!(!help.error_vocabulary.is_empty());
+        assert!(!help.examples.is_empty());
+        assert!(help.usage.contains("media upload"));
+    }
+
+    #[test]
+    fn test_commands_list_includes_timeline() {
+        let list = CommandsList::new();
+        assert!(
+            list.commands.iter().any(|c| c.name == "timeline.home"),
+            "timeline.home should be in commands list"
+        );
+        assert!(
+            list.commands.iter().any(|c| c.name == "timeline.mentions"),
+            "timeline.mentions should be in commands list"
+        );
+        assert!(
+            list.commands.iter().any(|c| c.name == "timeline.user"),
+            "timeline.user should be in commands list"
+        );
+
+        // timeline commands are read-only (safe) and have cost
+        let home_cmd = list
+            .commands
+            .iter()
+            .find(|c| c.name == "timeline.home")
+            .unwrap();
+        assert_eq!(home_cmd.risk, RiskLevel::Safe);
+        assert!(home_cmd.has_cost);
+
+        // timeline.user requires handle argument
+        let user_cmd = list
+            .commands
+            .iter()
+            .find(|c| c.name == "timeline.user")
+            .unwrap();
+        let handle_arg = user_cmd.arguments.iter().find(|a| a.name == "handle");
+        assert!(
+            handle_arg.is_some(),
+            "timeline.user should have handle argument"
+        );
+        assert!(
+            handle_arg.unwrap().required,
+            "handle argument should be required"
+        );
+    }
+
+    #[test]
     fn test_command_schema() {
         let schema = CommandSchema::for_command("commands");
         assert_eq!(schema.command, "commands");
         assert!(schema.input_schema.is_object());
         assert!(schema.output_schema.is_object());
+    }
+
+    #[test]
+    fn test_timeline_schema() {
+        for command in &["timeline.home", "timeline.mentions", "timeline.user"] {
+            let schema = CommandSchema::for_command(command);
+            assert_eq!(schema.command, *command);
+            assert!(schema.input_schema.is_object());
+            assert!(schema.output_schema.is_object());
+        }
+
+        // timeline.user requires handle
+        let user_schema = CommandSchema::for_command("timeline.user");
+        let required = user_schema.input_schema["required"].as_array().unwrap();
+        assert!(
+            required.iter().any(|v| v.as_str() == Some("handle")),
+            "timeline.user input schema should require handle"
+        );
+    }
+
+    #[test]
+    fn test_timeline_help() {
+        for command in &["timeline.home", "timeline.mentions", "timeline.user"] {
+            let help = CommandHelp::for_command(command);
+            assert_eq!(help.command, *command);
+            assert!(!help.exit_codes.is_empty());
+            assert!(!help.error_vocabulary.is_empty());
+            assert!(!help.examples.is_empty());
+        }
     }
 
     #[test]

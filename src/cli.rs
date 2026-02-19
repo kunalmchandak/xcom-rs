@@ -102,6 +102,63 @@ pub enum Commands {
         #[arg(long)]
         yes: bool,
     },
+
+    /// Search operations
+    Search {
+        #[command(subcommand)]
+        command: SearchCommands,
+    },
+
+    /// Timeline operations (home, mentions, user)
+    Timeline {
+        #[command(subcommand)]
+        command: TimelineCommands,
+    },
+
+    /// Media operations
+    Media {
+        #[command(subcommand)]
+        command: MediaCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TimelineCommands {
+    /// Get home timeline (reverse chronological feed)
+    Home {
+        /// Maximum number of tweets to return
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Pagination cursor token
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+
+    /// Get mentions timeline
+    Mentions {
+        /// Maximum number of tweets to return
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Pagination cursor token
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+
+    /// Get tweets from a specific user
+    User {
+        /// User handle (without @)
+        handle: String,
+
+        /// Maximum number of tweets to return
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Pagination cursor token
+        #[arg(long)]
+        cursor: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -156,6 +213,49 @@ pub enum TweetsCommands {
     /// Undo a retweet
     Unretweet {
         /// Tweet ID to unretweet
+        tweet_id: String,
+    },
+
+    /// Reply to a tweet
+    Reply {
+        /// ID of the tweet to reply to
+        tweet_id: String,
+
+        /// Reply text content
+        text: String,
+
+        /// Client request ID for idempotency (auto-generated if not provided)
+        #[arg(long)]
+        client_request_id: Option<String>,
+
+        /// Policy when operation with same client_request_id exists
+        #[arg(long, default_value = "return")]
+        if_exists: String,
+    },
+
+    /// Post a thread of tweets (sequential replies)
+    Thread {
+        /// Tweet texts (at least one required; first is standalone, rest are replies)
+        texts: Vec<String>,
+
+        /// Prefix for generating per-tweet client_request_ids
+        #[arg(long)]
+        client_request_id_prefix: Option<String>,
+
+        /// Policy when operation with same client_request_id exists
+        #[arg(long, default_value = "return")]
+        if_exists: String,
+    },
+
+    /// Show a single tweet by ID
+    Show {
+        /// Tweet ID to fetch
+        tweet_id: String,
+    },
+
+    /// Retrieve a conversation tree starting from a tweet
+    Conversation {
+        /// Tweet ID (root of the conversation)
         tweet_id: String,
     },
 }
@@ -219,6 +319,46 @@ pub enum BillingCommands {
 
     /// Get billing report
     Report,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MediaCommands {
+    /// Upload a media file and return the media_id
+    Upload {
+        /// Path to the media file to upload
+        path: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SearchCommands {
+    /// Search recent tweets matching a query
+    Recent {
+        /// Search query string
+        query: String,
+
+        /// Maximum number of results to return
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Pagination cursor
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+
+    /// Search users matching a query
+    Users {
+        /// Search query string
+        query: String,
+
+        /// Maximum number of results to return
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Pagination cursor
+        #[arg(long)]
+        cursor: Option<String>,
+    },
 }
 
 #[cfg(test)]
@@ -380,6 +520,379 @@ mod tests {
             assert_eq!(cursor, Some("next_page_token".to_string()));
         } else {
             panic!("Expected Bookmarks List command");
+        }
+    }
+
+    #[test]
+    fn test_timeline_home_command() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "home"]);
+        if let Some(Commands::Timeline {
+            command: TimelineCommands::Home { limit, cursor },
+        }) = cli.command
+        {
+            assert_eq!(limit, 10);
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Timeline::Home command");
+        }
+    }
+
+    #[test]
+    fn test_timeline_home_with_limit() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "home", "--limit", "20"]);
+        if let Some(Commands::Timeline {
+            command: TimelineCommands::Home { limit, cursor },
+        }) = cli.command
+        {
+            assert_eq!(limit, 20);
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Timeline::Home command with limit");
+        }
+    }
+
+    #[test]
+    fn test_timeline_home_with_cursor() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "home", "--cursor", "next_token_123"]);
+        if let Some(Commands::Timeline {
+            command: TimelineCommands::Home { limit: _, cursor },
+        }) = cli.command
+        {
+            assert_eq!(cursor, Some("next_token_123".to_string()));
+        } else {
+            panic!("Expected Timeline::Home command with cursor");
+        }
+    }
+
+    #[test]
+    fn test_timeline_mentions_command() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "mentions"]);
+        if let Some(Commands::Timeline {
+            command: TimelineCommands::Mentions { limit, cursor },
+        }) = cli.command
+        {
+            assert_eq!(limit, 10);
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Timeline::Mentions command");
+        }
+    }
+
+    #[test]
+    fn test_timeline_user_command() {
+        let cli = Cli::parse_from(["xcom-rs", "timeline", "user", "johndoe"]);
+        if let Some(Commands::Timeline {
+            command:
+                TimelineCommands::User {
+                    handle,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(handle, "johndoe");
+            assert_eq!(limit, 10);
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Timeline::User command");
+        }
+    }
+
+    #[test]
+    fn test_timeline_user_with_options() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "timeline",
+            "user",
+            "johndoe",
+            "--limit",
+            "5",
+            "--cursor",
+            "cursor_abc",
+        ]);
+        if let Some(Commands::Timeline {
+            command:
+                TimelineCommands::User {
+                    handle,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(handle, "johndoe");
+            assert_eq!(limit, 5);
+            assert_eq!(cursor, Some("cursor_abc".to_string()));
+        } else {
+            panic!("Expected Timeline::User command with options");
+        }
+    }
+
+    #[test]
+    fn test_search_recent_command() {
+        let cli = Cli::parse_from(["xcom-rs", "search", "recent", "hello world"]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Recent {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "hello world");
+            assert!(limit.is_none());
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Search Recent command");
+        }
+    }
+
+    #[test]
+    fn test_search_recent_with_limit() {
+        let cli = Cli::parse_from(["xcom-rs", "search", "recent", "rust", "--limit", "20"]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Recent {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "rust");
+            assert_eq!(limit, Some(20));
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Search Recent command with limit");
+        }
+    }
+
+    #[test]
+    fn test_search_recent_with_cursor() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "search",
+            "recent",
+            "rust",
+            "--cursor",
+            "cursor_10",
+        ]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Recent {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "rust");
+            assert!(limit.is_none());
+            assert_eq!(cursor, Some("cursor_10".to_string()));
+        } else {
+            panic!("Expected Search Recent command with cursor");
+        }
+    }
+
+    #[test]
+    fn test_search_users_command() {
+        let cli = Cli::parse_from(["xcom-rs", "search", "users", "alice"]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Users {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "alice");
+            assert!(limit.is_none());
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Search Users command");
+        }
+    }
+
+    #[test]
+    fn test_search_users_with_limit_and_cursor() {
+        let cli = Cli::parse_from([
+            "xcom-rs", "search", "users", "bob", "--limit", "5", "--cursor", "cursor_5",
+        ]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Users {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "bob");
+            assert_eq!(limit, Some(5));
+            assert_eq!(cursor, Some("cursor_5".to_string()));
+        } else {
+            panic!("Expected Search Users command with limit and cursor");
+        }
+    }
+
+    #[test]
+    fn test_tweets_reply_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "reply", "tweet_123", "Hello!"]);
+        if let Some(Commands::Tweets {
+            command:
+                TweetsCommands::Reply {
+                    tweet_id,
+                    text,
+                    client_request_id,
+                    if_exists,
+                },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet_123");
+            assert_eq!(text, "Hello!");
+            assert!(client_request_id.is_none());
+            assert_eq!(if_exists, "return");
+        } else {
+            panic!("Expected Tweets Reply command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_reply_with_client_request_id() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "tweets",
+            "reply",
+            "tweet_123",
+            "Hello!",
+            "--client-request-id",
+            "my-reply-001",
+        ]);
+        if let Some(Commands::Tweets {
+            command:
+                TweetsCommands::Reply {
+                    tweet_id,
+                    text,
+                    client_request_id,
+                    if_exists,
+                },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet_123");
+            assert_eq!(text, "Hello!");
+            assert_eq!(client_request_id, Some("my-reply-001".to_string()));
+            assert_eq!(if_exists, "return");
+        } else {
+            panic!("Expected Tweets Reply command with client_request_id");
+        }
+    }
+
+    #[test]
+    fn test_tweets_thread_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "thread", "First tweet", "Second tweet"]);
+        if let Some(Commands::Tweets {
+            command:
+                TweetsCommands::Thread {
+                    texts,
+                    client_request_id_prefix,
+                    if_exists,
+                },
+        }) = cli.command
+        {
+            assert_eq!(texts, vec!["First tweet", "Second tweet"]);
+            assert!(client_request_id_prefix.is_none());
+            assert_eq!(if_exists, "return");
+        } else {
+            panic!("Expected Tweets Thread command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_thread_with_prefix() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "tweets",
+            "thread",
+            "A",
+            "B",
+            "--client-request-id-prefix",
+            "thread-001",
+        ]);
+        if let Some(Commands::Tweets {
+            command:
+                TweetsCommands::Thread {
+                    texts,
+                    client_request_id_prefix,
+                    if_exists: _,
+                },
+        }) = cli.command
+        {
+            assert_eq!(texts, vec!["A", "B"]);
+            assert_eq!(client_request_id_prefix, Some("thread-001".to_string()));
+        } else {
+            panic!("Expected Tweets Thread command with prefix");
+        }
+    }
+
+    #[test]
+    fn test_tweets_show_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "show", "tweet_999"]);
+        if let Some(Commands::Tweets {
+            command: TweetsCommands::Show { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet_999");
+        } else {
+            panic!("Expected Tweets Show command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_conversation_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "conversation", "tweet_root"]);
+        if let Some(Commands::Tweets {
+            command: TweetsCommands::Conversation { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet_root");
+        } else {
+            panic!("Expected Tweets Conversation command");
+        }
+    }
+
+    // Task 5.2 – CLI parse tests for media commands
+    #[test]
+    fn test_media_upload_command() {
+        let cli = Cli::parse_from(["xcom-rs", "media", "upload", "/tmp/image.jpg"]);
+        if let Some(Commands::Media {
+            command: MediaCommands::Upload { path },
+        }) = cli.command
+        {
+            assert_eq!(path, "/tmp/image.jpg");
+        } else {
+            panic!("Expected Media::Upload command");
+        }
+    }
+
+    #[test]
+    fn test_media_upload_with_output_json() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "--output",
+            "json",
+            "media",
+            "upload",
+            "/tmp/photo.png",
+        ]);
+        assert_eq!(cli.output, "json");
+        if let Some(Commands::Media {
+            command: MediaCommands::Upload { path },
+        }) = cli.command
+        {
+            assert_eq!(path, "/tmp/photo.png");
+        } else {
+            panic!("Expected Media::Upload command with output format");
         }
     }
 }
