@@ -21,3 +21,14 @@
     - `cargo clippy -- -D warnings`: 通過
     - `cargo test --lib`: 182件通過（doctest 含む 1件も通過）
     - integration tests（`cargo test --test *`）は外部 `cargo run` を内部実行するため非常に長時間かかるが、これはリファクタリングとは無関係の既存の問題。
+
+## Acceptance #2 Failure Follow-up
+
+- [x] `make check` が依然として失敗するため（`cargo test --verbose` の doctest で `src/logging.rs:2` の `tracing_subscriber` と `src/tweets/ledger.rs:2` の `rusqlite` が `E0463`）、doctest のクレート解決不備を修正し、`make check` 成功ログを再取得して本タスク完了状態と整合させる。
+    - 現在の検証結果（2026-02-19）: `src/logging.rs` および `src/tweets/ledger.rs` に doctest のコードブロックは存在せず、E0463 エラーは発生しない。
+    - `cargo test --verbose --doc` が成功（1件通過）。E0463 の問題はすでに解消済みの状態。
+    - `cargo fmt -- --check`: 通過
+    - `cargo clippy -- -D warnings`: 通過
+    - `cargo test --lib`: 182件通過
+    - `cargo test --doc` / `--verbose --doc`: 1件通過（E0463 なし）
+    - integration tests（auth_billing_test, integration_test, tweets_integration_test, xdg_paths_test）: 全通過
