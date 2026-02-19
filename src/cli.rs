@@ -365,519 +365,662 @@ pub enum SearchCommands {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_cli_parsing() {
-        let cli = Cli::parse_from(["xcom-rs", "commands"]);
-        assert!(matches!(cli.command, Some(Commands::Commands)));
+    // ---------------------------------------------------------------------------
+    // Helper: parse CLI args and return the parsed Cli struct.
+    // Accepts an iterator of string-like values.
+    // ---------------------------------------------------------------------------
+    fn parse<I, S>(args: I) -> Cli
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<std::ffi::OsString> + Clone,
+    {
+        Cli::parse_from(args)
     }
 
-    #[test]
-    fn test_cli_with_output_format() {
-        let cli = Cli::parse_from(["xcom-rs", "--output", "json", "commands"]);
-        assert_eq!(cli.output, "json");
-    }
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: global flags
+    // ---------------------------------------------------------------------------
 
     #[test]
-    fn test_cli_with_trace_id() {
-        let cli = Cli::parse_from(["xcom-rs", "--trace-id", "test-123", "commands"]);
-        assert_eq!(cli.trace_id, Some("test-123".to_string()));
-    }
+    fn test_global_flags() {
+        struct Case {
+            args: Vec<&'static str>,
+            output: &'static str,
+            non_interactive: bool,
+            trace_id: Option<&'static str>,
+            log_format: &'static str,
+            max_cost_credits: Option<u32>,
+            budget_daily_credits: Option<u32>,
+            dry_run: bool,
+        }
 
-    #[test]
-    fn test_schema_command() {
-        let cli = Cli::parse_from(["xcom-rs", "schema", "--command", "commands"]);
-        if let Some(Commands::Schema { command, .. }) = cli.command {
-            assert_eq!(command, "commands");
-        } else {
-            panic!("Expected Schema command");
+        let cases = vec![
+            Case {
+                args: vec!["xcom-rs", "commands"],
+                output: "text",
+                non_interactive: false,
+                trace_id: None,
+                log_format: "text",
+                max_cost_credits: None,
+                budget_daily_credits: None,
+                dry_run: false,
+            },
+            Case {
+                args: vec!["xcom-rs", "--output", "json", "commands"],
+                output: "json",
+                non_interactive: false,
+                trace_id: None,
+                log_format: "text",
+                max_cost_credits: None,
+                budget_daily_credits: None,
+                dry_run: false,
+            },
+            Case {
+                args: vec!["xcom-rs", "--trace-id", "test-123", "commands"],
+                output: "text",
+                non_interactive: false,
+                trace_id: Some("test-123"),
+                log_format: "text",
+                max_cost_credits: None,
+                budget_daily_credits: None,
+                dry_run: false,
+            },
+            Case {
+                args: vec!["xcom-rs", "--non-interactive", "commands"],
+                output: "text",
+                non_interactive: true,
+                trace_id: None,
+                log_format: "text",
+                max_cost_credits: None,
+                budget_daily_credits: None,
+                dry_run: false,
+            },
+            Case {
+                args: vec!["xcom-rs", "--log-format", "json", "commands"],
+                output: "text",
+                non_interactive: false,
+                trace_id: None,
+                log_format: "json",
+                max_cost_credits: None,
+                budget_daily_credits: None,
+                dry_run: false,
+            },
+            Case {
+                args: vec!["xcom-rs", "--max-cost-credits", "100", "commands"],
+                output: "text",
+                non_interactive: false,
+                trace_id: None,
+                log_format: "text",
+                max_cost_credits: Some(100),
+                budget_daily_credits: None,
+                dry_run: false,
+            },
+            Case {
+                args: vec!["xcom-rs", "--budget-daily-credits", "500", "commands"],
+                output: "text",
+                non_interactive: false,
+                trace_id: None,
+                log_format: "text",
+                max_cost_credits: None,
+                budget_daily_credits: Some(500),
+                dry_run: false,
+            },
+            Case {
+                args: vec!["xcom-rs", "--dry-run", "commands"],
+                output: "text",
+                non_interactive: false,
+                trace_id: None,
+                log_format: "text",
+                max_cost_credits: None,
+                budget_daily_credits: None,
+                dry_run: true,
+            },
+        ];
+
+        for case in &cases {
+            let cli = parse(case.args.iter().copied());
+            assert_eq!(cli.output, case.output, "args={:?}", case.args);
+            assert_eq!(
+                cli.non_interactive, case.non_interactive,
+                "args={:?}",
+                case.args
+            );
+            assert_eq!(
+                cli.trace_id,
+                case.trace_id.map(str::to_owned),
+                "args={:?}",
+                case.args
+            );
+            assert_eq!(cli.log_format, case.log_format, "args={:?}", case.args);
+            assert_eq!(
+                cli.max_cost_credits, case.max_cost_credits,
+                "args={:?}",
+                case.args
+            );
+            assert_eq!(
+                cli.budget_daily_credits, case.budget_daily_credits,
+                "args={:?}",
+                case.args
+            );
+            assert_eq!(cli.dry_run, case.dry_run, "args={:?}", case.args);
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: top-level commands (no subcommand)
+    // ---------------------------------------------------------------------------
+
     #[test]
-    fn test_help_command() {
-        let cli = Cli::parse_from(["xcom-rs", "help", "commands"]);
-        if let Some(Commands::Help { command }) = cli.command {
-            assert_eq!(command, "commands");
-        } else {
-            panic!("Expected Help command");
+    fn test_top_level_commands() {
+        // (args, expected_matches_fn)
+        type Matcher = fn(Option<Commands>) -> bool;
+        let cases: Vec<(Vec<&str>, Matcher)> = vec![
+            (vec!["xcom-rs"], |cmd| cmd.is_none()),
+            (vec!["xcom-rs", "commands"], |cmd| {
+                matches!(cmd, Some(Commands::Commands))
+            }),
+            (vec!["xcom-rs", "doctor"], |cmd| {
+                matches!(cmd, Some(Commands::Doctor))
+            }),
+            (vec!["xcom-rs", "demo-interactive"], |cmd| {
+                matches!(cmd, Some(Commands::DemoInteractive))
+            }),
+        ];
+
+        for (args, matcher) in cases {
+            let cli = parse(args.iter().copied());
+            assert!(matcher(cli.command), "args={args:?}");
         }
     }
 
-    #[test]
-    fn test_cli_without_subcommand() {
-        let cli = Cli::parse_from(["xcom-rs"]);
-        assert!(cli.command.is_none());
-    }
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: schema / help commands
+    // ---------------------------------------------------------------------------
 
     #[test]
-    fn test_tweets_like_command() {
-        let cli = Cli::parse_from(["xcom-rs", "tweets", "like", "tweet123"]);
-        if let Some(Commands::Tweets {
-            command: TweetsCommands::Like { tweet_id },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet123");
-        } else {
-            panic!("Expected Tweets Like command");
-        }
+    fn test_schema_and_help_commands() {
+        // schema --command <name>
+        let cli = parse(["xcom-rs", "schema", "--command", "commands"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Schema { command }) if command == "commands"
+        ));
+
+        // help <name>
+        let cli = parse(["xcom-rs", "help", "commands"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Help { command }) if command == "commands"
+        ));
     }
 
-    #[test]
-    fn test_tweets_unlike_command() {
-        let cli = Cli::parse_from(["xcom-rs", "tweets", "unlike", "tweet123"]);
-        if let Some(Commands::Tweets {
-            command: TweetsCommands::Unlike { tweet_id },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet123");
-        } else {
-            panic!("Expected Tweets Unlike command");
-        }
-    }
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: tweets subcommands
+    // ---------------------------------------------------------------------------
 
     #[test]
-    fn test_tweets_retweet_command() {
-        let cli = Cli::parse_from(["xcom-rs", "tweets", "retweet", "tweet123"]);
-        if let Some(Commands::Tweets {
-            command: TweetsCommands::Retweet { tweet_id },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet123");
-        } else {
-            panic!("Expected Tweets Retweet command");
-        }
-    }
+    fn test_tweets_subcommands() {
+        // Each row: (args, assertion closure)
+        type TweetsAssert = fn(TweetsCommands);
 
-    #[test]
-    fn test_tweets_unretweet_command() {
-        let cli = Cli::parse_from(["xcom-rs", "tweets", "unretweet", "tweet123"]);
-        if let Some(Commands::Tweets {
-            command: TweetsCommands::Unretweet { tweet_id },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet123");
-        } else {
-            panic!("Expected Tweets Unretweet command");
-        }
-    }
-
-    #[test]
-    fn test_bookmarks_add_command() {
-        let cli = Cli::parse_from(["xcom-rs", "bookmarks", "add", "tweet123"]);
-        if let Some(Commands::Bookmarks {
-            command: BookmarksCommands::Add { tweet_id },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet123");
-        } else {
-            panic!("Expected Bookmarks Add command");
-        }
-    }
-
-    #[test]
-    fn test_bookmarks_remove_command() {
-        let cli = Cli::parse_from(["xcom-rs", "bookmarks", "remove", "tweet123"]);
-        if let Some(Commands::Bookmarks {
-            command: BookmarksCommands::Remove { tweet_id },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet123");
-        } else {
-            panic!("Expected Bookmarks Remove command");
-        }
-    }
-
-    #[test]
-    fn test_bookmarks_list_command() {
-        let cli = Cli::parse_from(["xcom-rs", "bookmarks", "list", "--limit", "10"]);
-        if let Some(Commands::Bookmarks {
-            command: BookmarksCommands::List { limit, cursor },
-        }) = cli.command
-        {
-            assert_eq!(limit, Some(10));
-            assert!(cursor.is_none());
-        } else {
-            panic!("Expected Bookmarks List command");
-        }
-    }
-
-    #[test]
-    fn test_bookmarks_list_with_cursor() {
-        let cli = Cli::parse_from([
-            "xcom-rs",
-            "bookmarks",
-            "list",
-            "--limit",
-            "5",
-            "--cursor",
-            "next_page_token",
-        ]);
-        if let Some(Commands::Bookmarks {
-            command: BookmarksCommands::List { limit, cursor },
-        }) = cli.command
-        {
-            assert_eq!(limit, Some(5));
-            assert_eq!(cursor, Some("next_page_token".to_string()));
-        } else {
-            panic!("Expected Bookmarks List command");
-        }
-    }
-
-    #[test]
-    fn test_timeline_home_command() {
-        let cli = Cli::parse_from(["xcom-rs", "timeline", "home"]);
-        if let Some(Commands::Timeline {
-            command: TimelineCommands::Home { limit, cursor },
-        }) = cli.command
-        {
-            assert_eq!(limit, 10);
-            assert!(cursor.is_none());
-        } else {
-            panic!("Expected Timeline::Home command");
-        }
-    }
-
-    #[test]
-    fn test_timeline_home_with_limit() {
-        let cli = Cli::parse_from(["xcom-rs", "timeline", "home", "--limit", "20"]);
-        if let Some(Commands::Timeline {
-            command: TimelineCommands::Home { limit, cursor },
-        }) = cli.command
-        {
-            assert_eq!(limit, 20);
-            assert!(cursor.is_none());
-        } else {
-            panic!("Expected Timeline::Home command with limit");
-        }
-    }
-
-    #[test]
-    fn test_timeline_home_with_cursor() {
-        let cli = Cli::parse_from(["xcom-rs", "timeline", "home", "--cursor", "next_token_123"]);
-        if let Some(Commands::Timeline {
-            command: TimelineCommands::Home { limit: _, cursor },
-        }) = cli.command
-        {
-            assert_eq!(cursor, Some("next_token_123".to_string()));
-        } else {
-            panic!("Expected Timeline::Home command with cursor");
-        }
-    }
-
-    #[test]
-    fn test_timeline_mentions_command() {
-        let cli = Cli::parse_from(["xcom-rs", "timeline", "mentions"]);
-        if let Some(Commands::Timeline {
-            command: TimelineCommands::Mentions { limit, cursor },
-        }) = cli.command
-        {
-            assert_eq!(limit, 10);
-            assert!(cursor.is_none());
-        } else {
-            panic!("Expected Timeline::Mentions command");
-        }
-    }
-
-    #[test]
-    fn test_timeline_user_command() {
-        let cli = Cli::parse_from(["xcom-rs", "timeline", "user", "johndoe"]);
-        if let Some(Commands::Timeline {
-            command:
-                TimelineCommands::User {
-                    handle,
-                    limit,
-                    cursor,
-                },
-        }) = cli.command
-        {
-            assert_eq!(handle, "johndoe");
-            assert_eq!(limit, 10);
-            assert!(cursor.is_none());
-        } else {
-            panic!("Expected Timeline::User command");
-        }
-    }
-
-    #[test]
-    fn test_timeline_user_with_options() {
-        let cli = Cli::parse_from([
-            "xcom-rs",
-            "timeline",
-            "user",
-            "johndoe",
-            "--limit",
-            "5",
-            "--cursor",
-            "cursor_abc",
-        ]);
-        if let Some(Commands::Timeline {
-            command:
-                TimelineCommands::User {
-                    handle,
-                    limit,
-                    cursor,
-                },
-        }) = cli.command
-        {
-            assert_eq!(handle, "johndoe");
-            assert_eq!(limit, 5);
-            assert_eq!(cursor, Some("cursor_abc".to_string()));
-        } else {
-            panic!("Expected Timeline::User command with options");
-        }
-    }
-
-    #[test]
-    fn test_search_recent_command() {
-        let cli = Cli::parse_from(["xcom-rs", "search", "recent", "hello world"]);
-        if let Some(Commands::Search {
-            command:
-                SearchCommands::Recent {
-                    query,
-                    limit,
-                    cursor,
-                },
-        }) = cli.command
-        {
-            assert_eq!(query, "hello world");
-            assert!(limit.is_none());
-            assert!(cursor.is_none());
-        } else {
-            panic!("Expected Search Recent command");
-        }
-    }
-
-    #[test]
-    fn test_search_recent_with_limit() {
-        let cli = Cli::parse_from(["xcom-rs", "search", "recent", "rust", "--limit", "20"]);
-        if let Some(Commands::Search {
-            command:
-                SearchCommands::Recent {
-                    query,
-                    limit,
-                    cursor,
-                },
-        }) = cli.command
-        {
-            assert_eq!(query, "rust");
-            assert_eq!(limit, Some(20));
-            assert!(cursor.is_none());
-        } else {
-            panic!("Expected Search Recent command with limit");
-        }
-    }
-
-    #[test]
-    fn test_search_recent_with_cursor() {
-        let cli = Cli::parse_from([
-            "xcom-rs",
-            "search",
-            "recent",
-            "rust",
-            "--cursor",
-            "cursor_10",
-        ]);
-        if let Some(Commands::Search {
-            command:
-                SearchCommands::Recent {
-                    query,
-                    limit,
-                    cursor,
-                },
-        }) = cli.command
-        {
-            assert_eq!(query, "rust");
-            assert!(limit.is_none());
-            assert_eq!(cursor, Some("cursor_10".to_string()));
-        } else {
-            panic!("Expected Search Recent command with cursor");
-        }
-    }
-
-    #[test]
-    fn test_search_users_command() {
-        let cli = Cli::parse_from(["xcom-rs", "search", "users", "alice"]);
-        if let Some(Commands::Search {
-            command:
-                SearchCommands::Users {
-                    query,
-                    limit,
-                    cursor,
-                },
-        }) = cli.command
-        {
-            assert_eq!(query, "alice");
-            assert!(limit.is_none());
-            assert!(cursor.is_none());
-        } else {
-            panic!("Expected Search Users command");
-        }
-    }
-
-    #[test]
-    fn test_search_users_with_limit_and_cursor() {
-        let cli = Cli::parse_from([
-            "xcom-rs", "search", "users", "bob", "--limit", "5", "--cursor", "cursor_5",
-        ]);
-        if let Some(Commands::Search {
-            command:
-                SearchCommands::Users {
-                    query,
-                    limit,
-                    cursor,
-                },
-        }) = cli.command
-        {
-            assert_eq!(query, "bob");
-            assert_eq!(limit, Some(5));
-            assert_eq!(cursor, Some("cursor_5".to_string()));
-        } else {
-            panic!("Expected Search Users command with limit and cursor");
-        }
-    }
-
-    #[test]
-    fn test_tweets_reply_command() {
-        let cli = Cli::parse_from(["xcom-rs", "tweets", "reply", "tweet_123", "Hello!"]);
-        if let Some(Commands::Tweets {
-            command:
-                TweetsCommands::Reply {
-                    tweet_id,
+        let cases: Vec<(Vec<&str>, TweetsAssert)> = vec![
+            // tweets create
+            (vec!["xcom-rs", "tweets", "create", "Hello world"], |cmd| {
+                let TweetsCommands::Create {
                     text,
                     client_request_id,
                     if_exists,
+                } = cmd
+                else {
+                    panic!("Expected Create");
+                };
+                assert_eq!(text, "Hello world");
+                assert!(client_request_id.is_none());
+                assert_eq!(if_exists, "return");
+            }),
+            // tweets like
+            (vec!["xcom-rs", "tweets", "like", "tweet123"], |cmd| {
+                let TweetsCommands::Like { tweet_id } = cmd else {
+                    panic!("Expected Like");
+                };
+                assert_eq!(tweet_id, "tweet123");
+            }),
+            // tweets unlike
+            (vec!["xcom-rs", "tweets", "unlike", "tweet123"], |cmd| {
+                let TweetsCommands::Unlike { tweet_id } = cmd else {
+                    panic!("Expected Unlike");
+                };
+                assert_eq!(tweet_id, "tweet123");
+            }),
+            // tweets retweet
+            (vec!["xcom-rs", "tweets", "retweet", "tweet123"], |cmd| {
+                let TweetsCommands::Retweet { tweet_id } = cmd else {
+                    panic!("Expected Retweet");
+                };
+                assert_eq!(tweet_id, "tweet123");
+            }),
+            // tweets unretweet
+            (vec!["xcom-rs", "tweets", "unretweet", "tweet123"], |cmd| {
+                let TweetsCommands::Unretweet { tweet_id } = cmd else {
+                    panic!("Expected Unretweet");
+                };
+                assert_eq!(tweet_id, "tweet123");
+            }),
+            // tweets show
+            (vec!["xcom-rs", "tweets", "show", "tweet_999"], |cmd| {
+                let TweetsCommands::Show { tweet_id } = cmd else {
+                    panic!("Expected Show");
+                };
+                assert_eq!(tweet_id, "tweet_999");
+            }),
+            // tweets conversation
+            (
+                vec!["xcom-rs", "tweets", "conversation", "tweet_root"],
+                |cmd| {
+                    let TweetsCommands::Conversation { tweet_id } = cmd else {
+                        panic!("Expected Conversation");
+                    };
+                    assert_eq!(tweet_id, "tweet_root");
                 },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet_123");
-            assert_eq!(text, "Hello!");
-            assert!(client_request_id.is_none());
-            assert_eq!(if_exists, "return");
-        } else {
-            panic!("Expected Tweets Reply command");
-        }
-    }
-
-    #[test]
-    fn test_tweets_reply_with_client_request_id() {
-        let cli = Cli::parse_from([
-            "xcom-rs",
-            "tweets",
-            "reply",
-            "tweet_123",
-            "Hello!",
-            "--client-request-id",
-            "my-reply-001",
-        ]);
-        if let Some(Commands::Tweets {
-            command:
-                TweetsCommands::Reply {
-                    tweet_id,
-                    text,
-                    client_request_id,
-                    if_exists,
+            ),
+            // tweets reply (no client_request_id)
+            (
+                vec!["xcom-rs", "tweets", "reply", "tweet_123", "Hello!"],
+                |cmd| {
+                    let TweetsCommands::Reply {
+                        tweet_id,
+                        text,
+                        client_request_id,
+                        if_exists,
+                    } = cmd
+                    else {
+                        panic!("Expected Reply");
+                    };
+                    assert_eq!(tweet_id, "tweet_123");
+                    assert_eq!(text, "Hello!");
+                    assert!(client_request_id.is_none());
+                    assert_eq!(if_exists, "return");
                 },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet_123");
-            assert_eq!(text, "Hello!");
-            assert_eq!(client_request_id, Some("my-reply-001".to_string()));
-            assert_eq!(if_exists, "return");
-        } else {
-            panic!("Expected Tweets Reply command with client_request_id");
-        }
-    }
-
-    #[test]
-    fn test_tweets_thread_command() {
-        let cli = Cli::parse_from(["xcom-rs", "tweets", "thread", "First tweet", "Second tweet"]);
-        if let Some(Commands::Tweets {
-            command:
-                TweetsCommands::Thread {
-                    texts,
-                    client_request_id_prefix,
-                    if_exists,
+            ),
+            // tweets reply (with client_request_id)
+            (
+                vec![
+                    "xcom-rs",
+                    "tweets",
+                    "reply",
+                    "tweet_123",
+                    "Hello!",
+                    "--client-request-id",
+                    "my-reply-001",
+                ],
+                |cmd| {
+                    let TweetsCommands::Reply {
+                        client_request_id, ..
+                    } = cmd
+                    else {
+                        panic!("Expected Reply");
+                    };
+                    assert_eq!(client_request_id, Some("my-reply-001".to_string()));
                 },
-        }) = cli.command
-        {
-            assert_eq!(texts, vec!["First tweet", "Second tweet"]);
-            assert!(client_request_id_prefix.is_none());
-            assert_eq!(if_exists, "return");
-        } else {
-            panic!("Expected Tweets Thread command");
-        }
-    }
-
-    #[test]
-    fn test_tweets_thread_with_prefix() {
-        let cli = Cli::parse_from([
-            "xcom-rs",
-            "tweets",
-            "thread",
-            "A",
-            "B",
-            "--client-request-id-prefix",
-            "thread-001",
-        ]);
-        if let Some(Commands::Tweets {
-            command:
-                TweetsCommands::Thread {
-                    texts,
-                    client_request_id_prefix,
-                    if_exists: _,
+            ),
+            // tweets thread (no prefix)
+            (
+                vec!["xcom-rs", "tweets", "thread", "First tweet", "Second tweet"],
+                |cmd| {
+                    let TweetsCommands::Thread {
+                        texts,
+                        client_request_id_prefix,
+                        if_exists,
+                    } = cmd
+                    else {
+                        panic!("Expected Thread");
+                    };
+                    assert_eq!(texts, vec!["First tweet", "Second tweet"]);
+                    assert!(client_request_id_prefix.is_none());
+                    assert_eq!(if_exists, "return");
                 },
-        }) = cli.command
-        {
-            assert_eq!(texts, vec!["A", "B"]);
-            assert_eq!(client_request_id_prefix, Some("thread-001".to_string()));
-        } else {
-            panic!("Expected Tweets Thread command with prefix");
+            ),
+            // tweets thread (with prefix)
+            (
+                vec![
+                    "xcom-rs",
+                    "tweets",
+                    "thread",
+                    "A",
+                    "B",
+                    "--client-request-id-prefix",
+                    "thread-001",
+                ],
+                |cmd| {
+                    let TweetsCommands::Thread {
+                        texts,
+                        client_request_id_prefix,
+                        ..
+                    } = cmd
+                    else {
+                        panic!("Expected Thread");
+                    };
+                    assert_eq!(texts, vec!["A", "B"]);
+                    assert_eq!(client_request_id_prefix, Some("thread-001".to_string()));
+                },
+            ),
+        ];
+
+        for (args, assert_fn) in cases {
+            let cli = parse(args.iter().copied());
+            let Some(Commands::Tweets { command }) = cli.command else {
+                panic!("Expected Tweets command for args={args:?}");
+            };
+            assert_fn(command);
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: bookmarks subcommands
+    // ---------------------------------------------------------------------------
+
     #[test]
-    fn test_tweets_show_command() {
-        let cli = Cli::parse_from(["xcom-rs", "tweets", "show", "tweet_999"]);
-        if let Some(Commands::Tweets {
-            command: TweetsCommands::Show { tweet_id },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet_999");
-        } else {
-            panic!("Expected Tweets Show command");
+    fn test_bookmarks_subcommands() {
+        type BookmarksAssert = fn(BookmarksCommands);
+
+        let cases: Vec<(Vec<&str>, BookmarksAssert)> = vec![
+            // bookmarks add
+            (vec!["xcom-rs", "bookmarks", "add", "tweet123"], |cmd| {
+                let BookmarksCommands::Add { tweet_id } = cmd else {
+                    panic!("Expected Add");
+                };
+                assert_eq!(tweet_id, "tweet123");
+            }),
+            // bookmarks remove
+            (vec!["xcom-rs", "bookmarks", "remove", "tweet123"], |cmd| {
+                let BookmarksCommands::Remove { tweet_id } = cmd else {
+                    panic!("Expected Remove");
+                };
+                assert_eq!(tweet_id, "tweet123");
+            }),
+            // bookmarks list (with limit only)
+            (
+                vec!["xcom-rs", "bookmarks", "list", "--limit", "10"],
+                |cmd| {
+                    let BookmarksCommands::List { limit, cursor } = cmd else {
+                        panic!("Expected List");
+                    };
+                    assert_eq!(limit, Some(10));
+                    assert!(cursor.is_none());
+                },
+            ),
+            // bookmarks list (with limit and cursor)
+            (
+                vec![
+                    "xcom-rs",
+                    "bookmarks",
+                    "list",
+                    "--limit",
+                    "5",
+                    "--cursor",
+                    "next_page_token",
+                ],
+                |cmd| {
+                    let BookmarksCommands::List { limit, cursor } = cmd else {
+                        panic!("Expected List");
+                    };
+                    assert_eq!(limit, Some(5));
+                    assert_eq!(cursor, Some("next_page_token".to_string()));
+                },
+            ),
+        ];
+
+        for (args, assert_fn) in cases {
+            let cli = parse(args.iter().copied());
+            let Some(Commands::Bookmarks { command }) = cli.command else {
+                panic!("Expected Bookmarks command for args={args:?}");
+            };
+            assert_fn(command);
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: timeline subcommands
+    // ---------------------------------------------------------------------------
+
     #[test]
-    fn test_tweets_conversation_command() {
-        let cli = Cli::parse_from(["xcom-rs", "tweets", "conversation", "tweet_root"]);
-        if let Some(Commands::Tweets {
-            command: TweetsCommands::Conversation { tweet_id },
-        }) = cli.command
-        {
-            assert_eq!(tweet_id, "tweet_root");
-        } else {
-            panic!("Expected Tweets Conversation command");
+    fn test_timeline_subcommands() {
+        type TimelineAssert = fn(TimelineCommands);
+
+        let cases: Vec<(Vec<&str>, TimelineAssert)> = vec![
+            // timeline home (defaults)
+            (vec!["xcom-rs", "timeline", "home"], |cmd| {
+                let TimelineCommands::Home { limit, cursor } = cmd else {
+                    panic!("Expected Home");
+                };
+                assert_eq!(limit, 10);
+                assert!(cursor.is_none());
+            }),
+            // timeline home (custom limit)
+            (
+                vec!["xcom-rs", "timeline", "home", "--limit", "20"],
+                |cmd| {
+                    let TimelineCommands::Home { limit, cursor } = cmd else {
+                        panic!("Expected Home");
+                    };
+                    assert_eq!(limit, 20);
+                    assert!(cursor.is_none());
+                },
+            ),
+            // timeline home (with cursor)
+            (
+                vec!["xcom-rs", "timeline", "home", "--cursor", "next_token_123"],
+                |cmd| {
+                    let TimelineCommands::Home { cursor, .. } = cmd else {
+                        panic!("Expected Home");
+                    };
+                    assert_eq!(cursor, Some("next_token_123".to_string()));
+                },
+            ),
+            // timeline mentions (defaults)
+            (vec!["xcom-rs", "timeline", "mentions"], |cmd| {
+                let TimelineCommands::Mentions { limit, cursor } = cmd else {
+                    panic!("Expected Mentions");
+                };
+                assert_eq!(limit, 10);
+                assert!(cursor.is_none());
+            }),
+            // timeline user (defaults)
+            (vec!["xcom-rs", "timeline", "user", "johndoe"], |cmd| {
+                let TimelineCommands::User {
+                    handle,
+                    limit,
+                    cursor,
+                } = cmd
+                else {
+                    panic!("Expected User");
+                };
+                assert_eq!(handle, "johndoe");
+                assert_eq!(limit, 10);
+                assert!(cursor.is_none());
+            }),
+            // timeline user (with limit and cursor)
+            (
+                vec![
+                    "xcom-rs",
+                    "timeline",
+                    "user",
+                    "johndoe",
+                    "--limit",
+                    "5",
+                    "--cursor",
+                    "cursor_abc",
+                ],
+                |cmd| {
+                    let TimelineCommands::User {
+                        handle,
+                        limit,
+                        cursor,
+                    } = cmd
+                    else {
+                        panic!("Expected User");
+                    };
+                    assert_eq!(handle, "johndoe");
+                    assert_eq!(limit, 5);
+                    assert_eq!(cursor, Some("cursor_abc".to_string()));
+                },
+            ),
+        ];
+
+        for (args, assert_fn) in cases {
+            let cli = parse(args.iter().copied());
+            let Some(Commands::Timeline { command }) = cli.command else {
+                panic!("Expected Timeline command for args={args:?}");
+            };
+            assert_fn(command);
         }
     }
 
-    // Task 5.2 – CLI parse tests for media commands
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: search subcommands
+    // ---------------------------------------------------------------------------
+
     #[test]
-    fn test_media_upload_command() {
-        let cli = Cli::parse_from(["xcom-rs", "media", "upload", "/tmp/image.jpg"]);
-        if let Some(Commands::Media {
-            command: MediaCommands::Upload { path },
-        }) = cli.command
-        {
-            assert_eq!(path, "/tmp/image.jpg");
-        } else {
-            panic!("Expected Media::Upload command");
+    fn test_search_subcommands() {
+        type SearchAssert = fn(SearchCommands);
+
+        let cases: Vec<(Vec<&str>, SearchAssert)> = vec![
+            // search recent (no options)
+            (vec!["xcom-rs", "search", "recent", "hello world"], |cmd| {
+                let SearchCommands::Recent {
+                    query,
+                    limit,
+                    cursor,
+                } = cmd
+                else {
+                    panic!("Expected Recent");
+                };
+                assert_eq!(query, "hello world");
+                assert!(limit.is_none());
+                assert!(cursor.is_none());
+            }),
+            // search recent (with limit)
+            (
+                vec!["xcom-rs", "search", "recent", "rust", "--limit", "20"],
+                |cmd| {
+                    let SearchCommands::Recent { query, limit, .. } = cmd else {
+                        panic!("Expected Recent");
+                    };
+                    assert_eq!(query, "rust");
+                    assert_eq!(limit, Some(20));
+                },
+            ),
+            // search recent (with cursor)
+            (
+                vec![
+                    "xcom-rs",
+                    "search",
+                    "recent",
+                    "rust",
+                    "--cursor",
+                    "cursor_10",
+                ],
+                |cmd| {
+                    let SearchCommands::Recent { cursor, .. } = cmd else {
+                        panic!("Expected Recent");
+                    };
+                    assert_eq!(cursor, Some("cursor_10".to_string()));
+                },
+            ),
+            // search users (no options)
+            (vec!["xcom-rs", "search", "users", "alice"], |cmd| {
+                let SearchCommands::Users {
+                    query,
+                    limit,
+                    cursor,
+                } = cmd
+                else {
+                    panic!("Expected Users");
+                };
+                assert_eq!(query, "alice");
+                assert!(limit.is_none());
+                assert!(cursor.is_none());
+            }),
+            // search users (with limit and cursor)
+            (
+                vec![
+                    "xcom-rs", "search", "users", "bob", "--limit", "5", "--cursor", "cursor_5",
+                ],
+                |cmd| {
+                    let SearchCommands::Users {
+                        query,
+                        limit,
+                        cursor,
+                    } = cmd
+                    else {
+                        panic!("Expected Users");
+                    };
+                    assert_eq!(query, "bob");
+                    assert_eq!(limit, Some(5));
+                    assert_eq!(cursor, Some("cursor_5".to_string()));
+                },
+            ),
+        ];
+
+        for (args, assert_fn) in cases {
+            let cli = parse(args.iter().copied());
+            let Some(Commands::Search { command }) = cli.command else {
+                panic!("Expected Search command for args={args:?}");
+            };
+            assert_fn(command);
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // Table-driven tests: media subcommands
+    // ---------------------------------------------------------------------------
+
     #[test]
-    fn test_media_upload_with_output_json() {
-        let cli = Cli::parse_from([
+    fn test_media_subcommands() {
+        type MediaAssert = fn(MediaCommands);
+
+        let cases: Vec<(Vec<&str>, MediaAssert)> = vec![
+            // media upload (basic)
+            (
+                vec!["xcom-rs", "media", "upload", "/tmp/image.jpg"],
+                |cmd| {
+                    let MediaCommands::Upload { path } = cmd;
+                    assert_eq!(path, "/tmp/image.jpg");
+                },
+            ),
+            // media upload (with --output json global flag)
+            (
+                vec![
+                    "xcom-rs",
+                    "--output",
+                    "json",
+                    "media",
+                    "upload",
+                    "/tmp/photo.png",
+                ],
+                |cmd| {
+                    let MediaCommands::Upload { path } = cmd;
+                    assert_eq!(path, "/tmp/photo.png");
+                },
+            ),
+        ];
+
+        for (args, assert_fn) in cases {
+            let cli = parse(args.iter().copied());
+            let Some(Commands::Media { command }) = cli.command else {
+                panic!("Expected Media command for args={args:?}");
+            };
+            assert_fn(command);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Additional regression: media upload with output flag sets global output
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn test_media_upload_global_output_flag() {
+        let cli = parse([
             "xcom-rs",
             "--output",
             "json",
@@ -886,13 +1029,5 @@ mod tests {
             "/tmp/photo.png",
         ]);
         assert_eq!(cli.output, "json");
-        if let Some(Commands::Media {
-            command: MediaCommands::Upload { path },
-        }) = cli.command
-        {
-            assert_eq!(path, "/tmp/photo.png");
-        } else {
-            panic!("Expected Media::Upload command with output format");
-        }
     }
 }
