@@ -30,3 +30,7 @@
 ## Acceptance #2 Failure Follow-up
 
 - [x] Fix doctest regression so `cargo test --verbose` passes end-to-end: current run fails in doc-tests with `E0463` (`can't find crate for tracing_subscriber` at `src/logging.rs:2` and `can't find crate for rusqlite` at `src/tweets/ledger.rs:2`). Ensure doc-test linkage/dependency resolution is stable, then re-run `cargo test --verbose`.
+
+## Acceptance #3 Failure Follow-up
+
+- [ ] Resolve doc-test linkage failure and rerun `cargo test --verbose`: current run still fails in doc-tests with `error[E0463]` (`can't find crate for tracing_subscriber` at `src/logging.rs:2` and `can't find crate for rusqlite` at `src/tweets/ledger.rs:2`), so the completion claim in `openspec/changes/add-engagement-actions/tasks.md` is not yet valid.
