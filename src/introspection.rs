@@ -351,6 +351,19 @@ impl CommandsList {
                     risk: RiskLevel::Safe,
                     has_cost: true,
                 },
+                CommandInfo {
+                    name: "media.upload".to_string(),
+                    description: "Upload a media file and return the media_id".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "path".to_string(),
+                        description: "Path to the media file to upload".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
             ],
         }
     }
@@ -880,6 +893,24 @@ impl CommandSchema {
                 }),
                 output_schema: Self::wrap_in_envelope_schema(Self::timeline_output_schema()),
             },
+            "media.upload" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["path"],
+                    "properties": {
+                        "path": { "type": "string", "description": "Path to the media file to upload" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["media_id"],
+                    "properties": {
+                        "media_id": { "type": "string", "description": "The media ID returned by the X API" }
+                    }
+                })),
+            },
             _ => Self {
                 command: command.to_string(),
                 input_schema: serde_json::json!({
@@ -1266,6 +1297,23 @@ impl CommandHelp {
                     },
                 ],
             },
+            "media.upload" => Self {
+                command: command.to_string(),
+                description: "Upload a media file to X and return the media_id (uses POST /2/media/upload)".to_string(),
+                usage: "xcom-rs media upload <path> [--output json|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Upload an image and get media_id in JSON format".to_string(),
+                        command: "xcom-rs media upload /path/to/image.jpg --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Upload a video file".to_string(),
+                        command: "xcom-rs media upload /path/to/video.mp4 --output json".to_string(),
+                    },
+                ],
+            },
             _ => Self {
                 command: command.to_string(),
                 description: format!("Help for {}", command),
@@ -1289,6 +1337,48 @@ mod tests {
         assert!(list.commands.iter().any(|c| c.name == "commands"));
         assert!(list.commands.iter().any(|c| c.name == "schema"));
         assert!(list.commands.iter().any(|c| c.name == "help"));
+    }
+
+    #[test]
+    fn test_commands_list_includes_media_upload() {
+        let list = CommandsList::new();
+        let media_cmd = list.commands.iter().find(|c| c.name == "media.upload");
+        assert!(
+            media_cmd.is_some(),
+            "media.upload should be in commands list"
+        );
+        let media_cmd = media_cmd.unwrap();
+        assert_eq!(media_cmd.risk, RiskLevel::Medium);
+        assert!(media_cmd.has_cost);
+        let path_arg = media_cmd.arguments.iter().find(|a| a.name == "path");
+        assert!(path_arg.is_some(), "media.upload should have path argument");
+        assert!(
+            path_arg.unwrap().required,
+            "path argument should be required"
+        );
+    }
+
+    #[test]
+    fn test_media_upload_schema() {
+        let schema = CommandSchema::for_command("media.upload");
+        assert_eq!(schema.command, "media.upload");
+        assert!(schema.input_schema.is_object());
+        assert!(schema.output_schema.is_object());
+        let required = schema.input_schema["required"].as_array().unwrap();
+        assert!(
+            required.iter().any(|v| v.as_str() == Some("path")),
+            "media.upload input schema should require path"
+        );
+    }
+
+    #[test]
+    fn test_media_upload_help() {
+        let help = CommandHelp::for_command("media.upload");
+        assert_eq!(help.command, "media.upload");
+        assert!(!help.exit_codes.is_empty());
+        assert!(!help.error_vocabulary.is_empty());
+        assert!(!help.examples.is_empty());
+        assert!(help.usage.contains("media upload"));
     }
 
     #[test]

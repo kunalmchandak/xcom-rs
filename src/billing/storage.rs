@@ -179,6 +179,8 @@ impl CostEstimator {
         rate_table.insert("timeline.home".to_string(), 2);
         rate_table.insert("timeline.mentions".to_string(), 2);
         rate_table.insert("timeline.user".to_string(), 1);
+        // Media operation rates
+        rate_table.insert("media.upload".to_string(), 10);
 
         Self {
             rate_table,
@@ -251,6 +253,15 @@ mod tests {
         let params = HashMap::new();
         let cost = estimator.estimate("unknown.operation", &params);
         assert_eq!(cost.credits, 1);
+    }
+
+    #[test]
+    fn test_estimator_media_upload() {
+        let estimator = CostEstimator::new();
+        let params = HashMap::new();
+        let cost = estimator.estimate("media.upload", &params);
+        assert_eq!(cost.credits, 10);
+        assert_eq!(cost.usd_estimated, 0.01);
     }
 
     #[test]
