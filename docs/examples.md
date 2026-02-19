@@ -267,6 +267,146 @@ schema = run_xcom(["schema", "--command", "commands"])
 print(f"Schema for commands: {schema}")
 ```
 
+## Tweet Operations
+
+### Create a Tweet
+
+```bash
+xcom-rs tweets create "Hello from xcom-rs!" --output json
+```
+
+### Reply to a Tweet
+
+```bash
+xcom-rs tweets reply <tweet_id> "Great point!" --output json
+```
+
+### Post a Thread
+
+Post multiple tweets as a sequential thread (first tweet is standalone; the rest are replies):
+
+```bash
+xcom-rs tweets thread "First tweet in the thread" "Second tweet" "Third tweet" --output json
+```
+
+With idempotency prefix:
+
+```bash
+xcom-rs tweets thread "Part 1" "Part 2" --client-request-id-prefix "my-thread-001" --output json
+```
+
+### Like / Unlike a Tweet
+
+```bash
+xcom-rs tweets like <tweet_id> --output json
+xcom-rs tweets unlike <tweet_id> --output json
+```
+
+### Retweet / Unretweet
+
+```bash
+xcom-rs tweets retweet <tweet_id> --output json
+xcom-rs tweets unretweet <tweet_id> --output json
+```
+
+### Show a Single Tweet
+
+```bash
+xcom-rs tweets show <tweet_id> --output json
+```
+
+### Retrieve a Conversation Tree
+
+```bash
+xcom-rs tweets conversation <tweet_id> --output json
+```
+
+## Search
+
+### Search Recent Tweets
+
+```bash
+xcom-rs search recent "rust programming" --limit 20 --output json
+```
+
+### Search Users
+
+```bash
+xcom-rs search users "alice" --limit 10 --output json
+```
+
+## Timeline
+
+### Home Timeline
+
+```bash
+# Get the 10 most recent tweets from the home feed
+xcom-rs timeline home --output json
+
+# With custom limit and pagination cursor
+xcom-rs timeline home --limit 20 --cursor "<next_cursor_token>" --output json
+```
+
+### Mentions Timeline
+
+```bash
+xcom-rs timeline mentions --limit 10 --output json
+```
+
+### User Timeline
+
+```bash
+# Get tweets from a specific user handle (without @)
+xcom-rs timeline user johndoe --limit 10 --output json
+```
+
+## Media
+
+### Upload a Media File
+
+```bash
+# Upload an image and get back a media_id for use in tweets
+xcom-rs media upload /path/to/image.jpg --output json
+```
+
+Example output:
+
+```json
+{
+  "ok": true,
+  "type": "media.upload",
+  "schemaVersion": 1,
+  "data": {
+    "mediaId": "1234567890",
+    "mimeType": "image/jpeg",
+    "size": 102400
+  }
+}
+```
+
+## Bookmarks
+
+### Add a Tweet to Bookmarks
+
+```bash
+xcom-rs bookmarks add <tweet_id> --output json
+```
+
+### Remove a Tweet from Bookmarks
+
+```bash
+xcom-rs bookmarks remove <tweet_id> --output json
+```
+
+### List Bookmarked Tweets
+
+```bash
+xcom-rs bookmarks list --limit 20 --output json
+
+# With pagination cursor
+xcom-rs bookmarks list --limit 10 --cursor "<next_cursor_token>" --output json
+```
+
 ## Best Practices for Agents
 
 1. **Always use JSON output**: `--output json` for machine-readable responses

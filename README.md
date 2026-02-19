@@ -10,8 +10,14 @@ supporting a human-readable text mode.
 - Output envelope with consistent `ok`/`error`/`meta` fields
 - Output formats: `text`, `json`, `yaml`, `ndjson`
 - Introspection helpers: `commands`, `schema`, `help`
-- Tweet operations (demo): `tweets create`, `tweets list`
-- Auth and billing helpers (local state)
+- Tweet operations: `tweets create`, `tweets list`, `tweets like`, `tweets unlike`, `tweets retweet`,
+  `tweets reply`, `tweets thread`, `tweets show`, `tweets conversation`
+- Search: `search recent`, `search users`
+- Timeline: `timeline home`, `timeline mentions`, `timeline user`
+- Media: `media upload`
+- Bookmarks: `bookmarks add`, `bookmarks remove`, `bookmarks list`
+- Auth and billing helpers (local state): `auth status`, `auth import`, `auth export`
+- Diagnostics: `doctor` (with optional `--probe` for API connectivity check)
 - Embedded skill installer for agent toolchains (`install-skills`)
 
 ## Install
@@ -53,8 +59,20 @@ For development setup and Makefile workflows, see [CONTRIBUTING.md](CONTRIBUTING
 ## Quick Start
 
 ```bash
+# 1. Install
 cargo install xcom-rs
-xcom-rs commands
+
+# 2. Authenticate — import a base64-encoded bearer token
+xcom-rs auth import "$XCOM_AUTH_DATA" --output json
+
+# 3. Verify setup with doctor
+xcom-rs doctor --output json
+
+# 4. Create your first tweet
+xcom-rs tweets create "Hello from xcom-rs!" --output json
+
+# 5. Browse your home timeline
+xcom-rs timeline home --limit 5 --output json
 ```
 
 ## Usage
