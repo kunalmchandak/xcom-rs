@@ -26,3 +26,7 @@
 ## Acceptance #1 Failure Follow-up
 
 - [x] Fix flaky env-var interference in `src/tweets/commands.rs::tests::test_list_with_field_projection` by using `crate::test_utils::env_lock::ENV_LOCK` and clearing `XCOM_SIMULATE_ERROR`/`XCOM_RETRY_AFTER_MS` before assertions; re-run `cargo test --verbose` to confirm no regression.
+
+## Acceptance #2 Failure Follow-up
+
+- [ ] Fix doctest regression so `cargo test --verbose` passes end-to-end: current run fails in doc-tests with `E0463` (`can't find crate for tracing_subscriber` at `src/logging.rs:2` and `can't find crate for rusqlite` at `src/tweets/ledger.rs:2`). Ensure doc-test linkage/dependency resolution is stable, then re-run `cargo test --verbose`.
