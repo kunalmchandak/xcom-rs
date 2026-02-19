@@ -319,4 +319,19 @@ mod tests {
             );
         }
     }
+
+    /// Verify that `CommandHelp::for_command` description is derived from the
+    /// registry, so that `commands` list and `help` output are consistent.
+    #[test]
+    fn test_help_description_matches_registry() {
+        let list = CommandsList::new();
+        for cmd in &list.commands {
+            let help = CommandHelp::for_command(&cmd.name);
+            assert_eq!(
+                help.description, cmd.description,
+                "help description for '{}' does not match registry description",
+                cmd.name
+            );
+        }
+    }
 }

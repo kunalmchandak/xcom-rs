@@ -3,8 +3,13 @@
 //! [`CommandHelp::for_command`] returns human-readable and machine-readable
 //! help for a given command, including usage, exit codes, error vocabulary,
 //! and examples.
+//!
+//! The `description` field is derived from [`super::registry::CommandsList`] so
+//! that it stays in sync with the single source of truth for command metadata.
 
 use serde::{Deserialize, Serialize};
+
+use super::registry::CommandsList;
 
 /// A single exit-code descriptor.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,15 +128,27 @@ impl CommandHelp {
         ]
     }
 
+    /// Look up the description for `command` from the registry, falling back to
+    /// a generic string if the command is not found.
+    fn description_from_registry(command: &str) -> String {
+        CommandsList::new()
+            .commands
+            .into_iter()
+            .find(|c| c.name == command)
+            .map(|c| c.description)
+            .unwrap_or_else(|| format!("Help for {command}"))
+    }
+
     /// Build the [`CommandHelp`] for the given command name.
     pub fn for_command(command: &str) -> Self {
         let exit_codes = Self::standard_exit_codes();
         let error_vocabulary = Self::standard_error_vocabulary();
+        let description = Self::description_from_registry(command);
 
         match command {
             "commands" => Self {
                 command: command.to_string(),
-                description: "List all available commands with metadata".to_string(),
+                description,
                 usage: "xcom-rs commands [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -148,7 +165,7 @@ impl CommandHelp {
             },
             "schema" => Self {
                 command: command.to_string(),
-                description: "Get JSON schema for command input/output".to_string(),
+                description,
                 usage: "xcom-rs schema --command <name> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -165,7 +182,7 @@ impl CommandHelp {
             },
             "help" => Self {
                 command: command.to_string(),
-                description: "Get detailed help for a command including exit codes".to_string(),
+                description,
                 usage: "xcom-rs help <command> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -182,9 +199,7 @@ impl CommandHelp {
             },
             "demo-interactive" => Self {
                 command: command.to_string(),
-                description:
-                    "Demo command that requires interaction (for testing non-interactive mode)"
-                        .to_string(),
+                description,
                 usage: "xcom-rs demo-interactive [--non-interactive] [--output json|yaml|text]"
                     .to_string(),
                 exit_codes,
@@ -205,9 +220,7 @@ impl CommandHelp {
             },
             "install-skills" => Self {
                 command: command.to_string(),
-                description:
-                    "Install skills from embedded repository to project or global locations"
-                        .to_string(),
+                description,
                 usage: "xcom-rs install-skills [--skill <name>] [--agent <agent>] [--global] \
                         [--yes] [--output json|yaml|text]"
                     .to_string(),
@@ -236,9 +249,7 @@ impl CommandHelp {
             },
             "search recent" => Self {
                 command: command.to_string(),
-                description:
-                    "Search recent tweets matching a query (uses GET /2/tweets/search/recent)"
-                        .to_string(),
+                description,
                 usage: "xcom-rs search recent \"<query>\" [--limit N] [--cursor <token>] \
                         [--output json|ndjson|yaml|text]"
                     .to_string(),
@@ -264,7 +275,7 @@ impl CommandHelp {
             },
             "search users" => Self {
                 command: command.to_string(),
-                description: "Search users matching a query (uses GET /2/users/search)".to_string(),
+                description,
                 usage: "xcom-rs search users \"<query>\" [--limit N] [--cursor <token>] \
                         [--output json|ndjson|yaml|text]"
                     .to_string(),
@@ -288,9 +299,7 @@ impl CommandHelp {
             },
             "tweets reply" => Self {
                 command: command.to_string(),
-                description: "Reply to a tweet (uses POST /2/tweets with \
-                              reply.in_reply_to_tweet_id)"
-                    .to_string(),
+                description,
                 usage: "xcom-rs tweets reply <tweet_id> \"<text>\" [--client-request-id <id>] \
                         [--if-exists return|error] [--output json|yaml|text]"
                     .to_string(),
@@ -312,9 +321,7 @@ impl CommandHelp {
             },
             "tweets thread" => Self {
                 command: command.to_string(),
-                description: "Post a thread of tweets (first is standalone, rest are sequential \
-                              replies)"
-                    .to_string(),
+                description,
                 usage: "xcom-rs tweets thread \"<t1>\" \"<t2>\" ... \
                         [--client-request-id-prefix <prefix>] [--if-exists return|error] \
                         [--output json|yaml|text]"
@@ -338,7 +345,7 @@ impl CommandHelp {
             },
             "tweets show" => Self {
                 command: command.to_string(),
-                description: "Show a single tweet by ID (uses GET /2/tweets/{id})".to_string(),
+                description,
                 usage: "xcom-rs tweets show <tweet_id> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -349,9 +356,7 @@ impl CommandHelp {
             },
             "tweets conversation" => Self {
                 command: command.to_string(),
-                description: "Retrieve a conversation tree (uses GET /2/tweets/{id} then GET \
-                              /2/tweets/search/recent?query=conversation_id:<id>)"
-                    .to_string(),
+                description,
                 usage: "xcom-rs tweets conversation <tweet_id> [--output json|yaml|text]"
                     .to_string(),
                 exit_codes,
@@ -363,7 +368,7 @@ impl CommandHelp {
             },
             "timeline.home" => Self {
                 command: command.to_string(),
-                description: "Get home timeline (reverse chronological feed)".to_string(),
+                description,
                 usage: "xcom-rs timeline home [--limit <n>] [--cursor <token>] \
                         [--output json|ndjson|yaml|text]"
                     .to_string(),
@@ -387,7 +392,7 @@ impl CommandHelp {
             },
             "timeline.mentions" => Self {
                 command: command.to_string(),
-                description: "Get mentions timeline".to_string(),
+                description,
                 usage: "xcom-rs timeline mentions [--limit <n>] [--cursor <token>] \
                         [--output json|ndjson|yaml|text]"
                     .to_string(),
@@ -406,7 +411,7 @@ impl CommandHelp {
             },
             "timeline.user" => Self {
                 command: command.to_string(),
-                description: "Get tweets from a specific user".to_string(),
+                description,
                 usage: "xcom-rs timeline user <handle> [--limit <n>] [--cursor <token>] \
                         [--output json|ndjson|yaml|text]"
                     .to_string(),
@@ -426,9 +431,7 @@ impl CommandHelp {
             },
             "media.upload" => Self {
                 command: command.to_string(),
-                description: "Upload a media file to X and return the media_id \
-                              (uses POST /2/media/upload)"
-                    .to_string(),
+                description,
                 usage: "xcom-rs media upload <path> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -447,7 +450,7 @@ impl CommandHelp {
             },
             "tweets like" => Self {
                 command: command.to_string(),
-                description: "Like a tweet on X.com".to_string(),
+                description,
                 usage: "xcom-rs tweets like <tweet_id> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -458,7 +461,7 @@ impl CommandHelp {
             },
             "tweets unlike" => Self {
                 command: command.to_string(),
-                description: "Unlike a tweet on X.com".to_string(),
+                description,
                 usage: "xcom-rs tweets unlike <tweet_id> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -469,7 +472,7 @@ impl CommandHelp {
             },
             "tweets retweet" => Self {
                 command: command.to_string(),
-                description: "Retweet a tweet on X.com".to_string(),
+                description,
                 usage: "xcom-rs tweets retweet <tweet_id> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -480,7 +483,7 @@ impl CommandHelp {
             },
             "tweets unretweet" => Self {
                 command: command.to_string(),
-                description: "Undo a retweet on X.com".to_string(),
+                description,
                 usage: "xcom-rs tweets unretweet <tweet_id> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -491,7 +494,7 @@ impl CommandHelp {
             },
             "bookmarks add" => Self {
                 command: command.to_string(),
-                description: "Add a tweet to bookmarks on X.com".to_string(),
+                description,
                 usage: "xcom-rs bookmarks add <tweet_id> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -502,7 +505,7 @@ impl CommandHelp {
             },
             "bookmarks remove" => Self {
                 command: command.to_string(),
-                description: "Remove a tweet from bookmarks on X.com".to_string(),
+                description,
                 usage: "xcom-rs bookmarks remove <tweet_id> [--output json|yaml|text]".to_string(),
                 exit_codes,
                 error_vocabulary,
@@ -513,7 +516,7 @@ impl CommandHelp {
             },
             "bookmarks list" => Self {
                 command: command.to_string(),
-                description: "List bookmarked tweets on X.com".to_string(),
+                description,
                 usage: "xcom-rs bookmarks list [--limit N] [--cursor <token>] \
                         [--output json|ndjson|yaml|text]"
                     .to_string(),
@@ -538,7 +541,7 @@ impl CommandHelp {
             },
             _ => Self {
                 command: command.to_string(),
-                description: format!("Help for {}", command),
+                description,
                 usage: format!("xcom-rs {} [options]", command),
                 exit_codes,
                 error_vocabulary,
