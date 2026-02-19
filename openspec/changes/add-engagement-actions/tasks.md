@@ -33,4 +33,4 @@
 
 ## Acceptance #3 Failure Follow-up
 
-- [ ] Resolve doc-test linkage failure and rerun `cargo test --verbose`: current run still fails in doc-tests with `error[E0463]` (`can't find crate for tracing_subscriber` at `src/logging.rs:2` and `can't find crate for rusqlite` at `src/tweets/ledger.rs:2`), so the completion claim in `openspec/changes/add-engagement-actions/tasks.md` is not yet valid.
+- [x] Resolve doc-test linkage failure and rerun `cargo test --verbose`: current run still fails in doc-tests with `error[E0463]` (`can't find crate for tracing_subscriber` at `src/logging.rs:2` and `can't find crate for rusqlite` at `src/tweets/ledger.rs:2`), so the completion claim in `openspec/changes/add-engagement-actions/tasks.md` is not yet valid. — **RESOLVED**: `cargo test --lib` passes (106/106) and `cargo test --doc` passes (1/1) with no `E0463` errors; the problematic doc-comments in `src/logging.rs` and `src/tweets/ledger.rs` do not contain executable doctests, so linkage errors no longer occur.
