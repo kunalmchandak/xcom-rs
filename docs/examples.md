@@ -407,6 +407,42 @@ xcom-rs bookmarks list --limit 20 --output json
 xcom-rs bookmarks list --limit 10 --cursor "<next_cursor_token>" --output json
 ```
 
+## Shell Completions
+
+Generate shell completion scripts to enable tab-completion for `xcom-rs` commands and flags.
+
+### Bash
+
+```bash
+# Source completions for the current session
+source <(xcom-rs completion --shell bash)
+
+# Persist completions (requires bash-completion package)
+xcom-rs completion --shell bash > ~/.local/share/bash-completion/completions/xcom-rs
+```
+
+### Zsh
+
+```zsh
+# Source completions for the current session
+source <(xcom-rs completion --shell zsh)
+
+# Persist to a fpath directory and reload
+mkdir -p ~/.zsh/completions
+xcom-rs completion --shell zsh > ~/.zsh/completions/_xcom-rs
+# Add to ~/.zshrc: fpath=(~/.zsh/completions $fpath); autoload -Uz compinit && compinit
+```
+
+### Fish
+
+```fish
+# Source completions for the current session
+xcom-rs completion --shell fish | source
+
+# Persist completions
+xcom-rs completion --shell fish > ~/.config/fish/completions/xcom-rs.fish
+```
+
 ## Best Practices for Agents
 
 1. **Always use JSON output**: `--output json` for machine-readable responses
