@@ -122,6 +122,64 @@ impl CommandsList {
                     risk: RiskLevel::Low,
                     has_cost: false,
                 },
+                CommandInfo {
+                    name: "search recent".to_string(),
+                    description: "Search recent tweets matching a query".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "query".to_string(),
+                            description: "Search query string".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of results to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "search users".to_string(),
+                    description: "Search users matching a query".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "query".to_string(),
+                            description: "Search query string".to_string(),
+                            required: true,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of results to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
             ],
         }
     }
@@ -338,6 +396,98 @@ impl CommandSchema {
                                     },
                                     "error": { "type": "string" },
                                     "used_symlink": { "type": "boolean" }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+            "search recent" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": { "type": "string" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweets"],
+                    "properties": {
+                        "tweets": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "text": { "type": "string" },
+                                    "author_id": { "type": "string" },
+                                    "created_at": { "type": "string" }
+                                }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "properties": {
+                                "pagination": {
+                                    "type": "object",
+                                    "required": ["resultCount"],
+                                    "properties": {
+                                        "nextCursor": { "type": "string" },
+                                        "prevCursor": { "type": "string" },
+                                        "resultCount": { "type": "integer" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+            "search users" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": { "type": "string" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["users"],
+                    "properties": {
+                        "users": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "name": { "type": "string" },
+                                    "username": { "type": "string" },
+                                    "description": { "type": "string" }
+                                }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "properties": {
+                                "pagination": {
+                                    "type": "object",
+                                    "required": ["resultCount"],
+                                    "properties": {
+                                        "nextCursor": { "type": "string" },
+                                        "prevCursor": { "type": "string" },
+                                        "resultCount": { "type": "integer" }
+                                    }
                                 }
                             }
                         }
@@ -564,6 +714,48 @@ impl CommandHelp {
                     ExampleInfo {
                         description: "Install all skills to OpenCode project scope".to_string(),
                         command: "xcom-rs install-skills --agent opencode --yes --output json".to_string(),
+                    },
+                ],
+            },
+            "search recent" => Self {
+                command: command.to_string(),
+                description: "Search recent tweets matching a query (uses GET /2/tweets/search/recent)".to_string(),
+                usage: "xcom-rs search recent \"<query>\" [--limit N] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Search for recent tweets about Rust".to_string(),
+                        command: "xcom-rs search recent \"rust programming\" --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Search with pagination limit".to_string(),
+                        command: "xcom-rs search recent \"AI\" --limit 20 --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Paginate through search results".to_string(),
+                        command: "xcom-rs search recent \"AI\" --cursor cursor_20 --output ndjson".to_string(),
+                    },
+                ],
+            },
+            "search users" => Self {
+                command: command.to_string(),
+                description: "Search users matching a query (uses GET /2/users/search)".to_string(),
+                usage: "xcom-rs search users \"<query>\" [--limit N] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Search for users named Alice".to_string(),
+                        command: "xcom-rs search users \"alice\" --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Search users with limit".to_string(),
+                        command: "xcom-rs search users \"developer\" --limit 5 --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Get users as NDJSON stream".to_string(),
+                        command: "xcom-rs search users \"rust\" --output ndjson".to_string(),
                     },
                 ],
             },

@@ -96,6 +96,12 @@ pub enum Commands {
         #[arg(long)]
         yes: bool,
     },
+
+    /// Search operations
+    Search {
+        #[command(subcommand)]
+        command: SearchCommands,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -165,6 +171,37 @@ pub enum BillingCommands {
     Report,
 }
 
+#[derive(Subcommand, Debug)]
+pub enum SearchCommands {
+    /// Search recent tweets matching a query
+    Recent {
+        /// Search query string
+        query: String,
+
+        /// Maximum number of results to return
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Pagination cursor
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+
+    /// Search users matching a query
+    Users {
+        /// Search query string
+        query: String,
+
+        /// Maximum number of results to return
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Pagination cursor
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,5 +248,114 @@ mod tests {
     fn test_cli_without_subcommand() {
         let cli = Cli::parse_from(["xcom-rs"]);
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn test_search_recent_command() {
+        let cli = Cli::parse_from(["xcom-rs", "search", "recent", "hello world"]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Recent {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "hello world");
+            assert!(limit.is_none());
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Search Recent command");
+        }
+    }
+
+    #[test]
+    fn test_search_recent_with_limit() {
+        let cli = Cli::parse_from(["xcom-rs", "search", "recent", "rust", "--limit", "20"]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Recent {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "rust");
+            assert_eq!(limit, Some(20));
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Search Recent command with limit");
+        }
+    }
+
+    #[test]
+    fn test_search_recent_with_cursor() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "search",
+            "recent",
+            "rust",
+            "--cursor",
+            "cursor_10",
+        ]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Recent {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "rust");
+            assert!(limit.is_none());
+            assert_eq!(cursor, Some("cursor_10".to_string()));
+        } else {
+            panic!("Expected Search Recent command with cursor");
+        }
+    }
+
+    #[test]
+    fn test_search_users_command() {
+        let cli = Cli::parse_from(["xcom-rs", "search", "users", "alice"]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Users {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "alice");
+            assert!(limit.is_none());
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Search Users command");
+        }
+    }
+
+    #[test]
+    fn test_search_users_with_limit_and_cursor() {
+        let cli = Cli::parse_from([
+            "xcom-rs", "search", "users", "bob", "--limit", "5", "--cursor", "cursor_5",
+        ]);
+        if let Some(Commands::Search {
+            command:
+                SearchCommands::Users {
+                    query,
+                    limit,
+                    cursor,
+                },
+        }) = cli.command
+        {
+            assert_eq!(query, "bob");
+            assert_eq!(limit, Some(5));
+            assert_eq!(cursor, Some("cursor_5".to_string()));
+        } else {
+            panic!("Expected Search Users command with limit and cursor");
+        }
     }
 }

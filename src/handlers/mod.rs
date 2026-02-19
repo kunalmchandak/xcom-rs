@@ -3,5 +3,6 @@ pub mod billing;
 pub mod demo;
 pub mod doctor;
 pub mod introspection;
+pub mod search;
 pub mod skills;
 pub mod tweets;
