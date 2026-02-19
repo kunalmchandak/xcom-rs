@@ -1,6 +1,7 @@
 use super::{
+    client::{fetch_conversation, TweetApiClient},
     ledger::IdempotencyLedger,
-    models::{Tweet, TweetFields, TweetMeta},
+    models::{ConversationResult, Tweet, TweetFields, TweetMeta},
 };
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -74,11 +75,72 @@ pub struct ListArgs {
     pub cursor: Option<String>,
 }
 
+/// Arguments for replying to a tweet
+#[derive(Debug, Clone)]
+pub struct ReplyArgs {
+    pub tweet_id: String,
+    pub text: String,
+    pub client_request_id: Option<String>,
+    pub if_exists: IfExistsPolicy,
+}
+
+/// Arguments for creating a thread of tweets
+#[derive(Debug, Clone)]
+pub struct ThreadArgs {
+    pub texts: Vec<String>,
+    pub client_request_id_prefix: Option<String>,
+    pub if_exists: IfExistsPolicy,
+}
+
+/// Arguments for showing a single tweet
+#[derive(Debug, Clone)]
+pub struct ShowArgs {
+    pub tweet_id: String,
+}
+
+/// Arguments for retrieving a conversation tree
+#[derive(Debug, Clone)]
+pub struct ConversationArgs {
+    pub tweet_id: String,
+}
+
 /// Result of a create operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateResult {
     pub tweet: Tweet,
     pub meta: TweetMeta,
+}
+
+/// Result of a reply operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplyResult {
+    pub tweet: Tweet,
+    pub meta: TweetMeta,
+}
+
+/// Result of a thread operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadResult {
+    pub tweets: Vec<Tweet>,
+    pub meta: ThreadMeta,
+}
+
+/// Metadata for thread results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadMeta {
+    pub count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed_index: Option<usize>,
+    pub created_tweet_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_cache: Option<bool>,
+}
+
+/// Result of a show operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShowResult {
+    pub tweet: Tweet,
 }
 
 /// Pagination metadata
@@ -187,12 +249,24 @@ impl std::error::Error for ClassifiedError {}
 /// Main tweets command handler
 pub struct TweetCommand {
     ledger: IdempotencyLedger,
+    api_client: Box<dyn TweetApiClient>,
 }
 
 impl TweetCommand {
-    /// Create a new tweet command handler
+    /// Create a new tweet command handler with a default stub API client
     pub fn new(ledger: IdempotencyLedger) -> Self {
-        Self { ledger }
+        Self {
+            ledger,
+            api_client: Box::new(super::client::MockTweetApiClient::new()),
+        }
+    }
+
+    /// Create a new tweet command handler with a custom API client
+    pub fn with_client(ledger: IdempotencyLedger, client: Box<dyn TweetApiClient>) -> Self {
+        Self {
+            ledger,
+            api_client: client,
+        }
     }
 
     /// Create a tweet with idempotency support
@@ -365,6 +439,142 @@ impl TweetCommand {
 
         Ok(ListResult { tweets, meta })
     }
+
+    /// Reply to a tweet with idempotency support
+    pub fn reply(&self, args: ReplyArgs) -> Result<ReplyResult> {
+        let client_request_id = args
+            .client_request_id
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        let request_hash = IdempotencyLedger::compute_request_hash(&args.text);
+
+        // Check ledger for existing operation
+        if let Some(entry) = self
+            .ledger
+            .lookup(&client_request_id)
+            .context("Failed to lookup operation in ledger")?
+        {
+            match args.if_exists {
+                IfExistsPolicy::Return => {
+                    let mut tweet = Tweet::new(entry.tweet_id.clone());
+                    tweet.text = Some(args.text.clone());
+                    let meta = TweetMeta {
+                        client_request_id,
+                        from_cache: Some(true),
+                    };
+                    return Ok(ReplyResult { tweet, meta });
+                }
+                IfExistsPolicy::Error => {
+                    return Err(IdempotencyConflictError {
+                        client_request_id: client_request_id.clone(),
+                    }
+                    .into());
+                }
+            }
+        }
+
+        // Post the reply via API client
+        let tweet = self
+            .api_client
+            .post_tweet(&args.text, Some(&args.tweet_id))
+            .context("Failed to post reply")?;
+
+        self.ledger
+            .record(&client_request_id, &request_hash, &tweet.id, "success")
+            .context("Failed to record operation in ledger")?;
+
+        let meta = TweetMeta {
+            client_request_id,
+            from_cache: None,
+        };
+
+        Ok(ReplyResult { tweet, meta })
+    }
+
+    /// Post a thread of tweets (sequential replies)
+    pub fn thread(&self, args: ThreadArgs) -> Result<ThreadResult> {
+        if args.texts.is_empty() {
+            return Err(anyhow!("Thread must contain at least one tweet"));
+        }
+
+        let prefix = args
+            .client_request_id_prefix
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+        let mut created_tweets: Vec<Tweet> = Vec::new();
+        let mut created_ids: Vec<String> = Vec::new();
+        let mut previous_id: Option<String> = None;
+
+        for (index, text) in args.texts.iter().enumerate() {
+            let client_request_id = format!("{}-{}", prefix, index);
+            let request_hash = IdempotencyLedger::compute_request_hash(text);
+
+            // Check ledger for existing operation
+            if let Some(entry) = self
+                .ledger
+                .lookup(&client_request_id)
+                .context("Failed to lookup operation in ledger")?
+            {
+                match args.if_exists {
+                    IfExistsPolicy::Return => {
+                        let mut tweet = Tweet::new(entry.tweet_id.clone());
+                        tweet.text = Some(text.clone());
+                        created_ids.push(tweet.id.clone());
+                        previous_id = Some(tweet.id.clone());
+                        created_tweets.push(tweet);
+                        continue;
+                    }
+                    IfExistsPolicy::Error => {
+                        return Err(IdempotencyConflictError {
+                            client_request_id: client_request_id.clone(),
+                        }
+                        .into());
+                    }
+                }
+            }
+
+            // Post tweet (first tweet is standalone, rest are replies)
+            let tweet = self
+                .api_client
+                .post_tweet(text, previous_id.as_deref())
+                .context(format!("Failed to post tweet at index {}", index))?;
+
+            self.ledger
+                .record(&client_request_id, &request_hash, &tweet.id, "success")
+                .context("Failed to record operation in ledger")?;
+
+            created_ids.push(tweet.id.clone());
+            previous_id = Some(tweet.id.clone());
+            created_tweets.push(tweet);
+        }
+
+        let meta = ThreadMeta {
+            count: created_tweets.len(),
+            failed_index: None,
+            created_tweet_ids: created_ids,
+            from_cache: None,
+        };
+
+        Ok(ThreadResult {
+            tweets: created_tweets,
+            meta,
+        })
+    }
+
+    /// Show a single tweet by ID
+    pub fn show(&self, args: ShowArgs) -> Result<ShowResult> {
+        let tweet = self
+            .api_client
+            .get_tweet(&args.tweet_id)
+            .context("Failed to fetch tweet")?;
+        Ok(ShowResult { tweet })
+    }
+
+    /// Retrieve a conversation tree starting from a tweet
+    pub fn conversation(&self, args: ConversationArgs) -> Result<ConversationResult> {
+        fetch_conversation(self.api_client.as_ref(), &args.tweet_id)
+            .context("Failed to fetch conversation")
+    }
 }
 
 #[cfg(test)]
@@ -518,5 +728,160 @@ mod tests {
             IfExistsPolicy::Error
         );
         assert!(IfExistsPolicy::from_str("invalid").is_err());
+    }
+
+    fn create_test_command_with_fixture() -> (TweetCommand, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
+        let client =
+            Box::new(crate::tweets::client::MockTweetApiClient::with_conversation_fixture());
+        let cmd = TweetCommand::with_client(ledger, client);
+        (cmd, temp_dir)
+    }
+
+    #[test]
+    fn test_reply_creates_tweet_with_reference() {
+        let (cmd, _temp) = create_test_command_with_fixture();
+
+        let args = ReplyArgs {
+            tweet_id: "tweet_root".to_string(),
+            text: "My reply".to_string(),
+            client_request_id: None,
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        let result = cmd.reply(args).unwrap();
+        assert_eq!(result.tweet.text, Some("My reply".to_string()));
+        assert!(!result.meta.client_request_id.is_empty());
+        // The mock client adds a referenced_tweets entry for replied_to
+        assert!(result.tweet.referenced_tweets.is_some());
+        let refs = result.tweet.referenced_tweets.unwrap();
+        assert_eq!(refs[0].ref_type, "replied_to");
+        assert_eq!(refs[0].id, "tweet_root");
+    }
+
+    #[test]
+    fn test_reply_idempotency_return() {
+        let (cmd, _temp) = create_test_command_with_fixture();
+
+        let args = ReplyArgs {
+            tweet_id: "tweet_root".to_string(),
+            text: "My reply".to_string(),
+            client_request_id: Some("reply-001".to_string()),
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        let result1 = cmd.reply(args.clone()).unwrap();
+        let result2 = cmd.reply(args).unwrap();
+        // Second call returns cached result
+        assert_eq!(result2.meta.from_cache, Some(true));
+        assert_eq!(
+            result1.meta.client_request_id,
+            result2.meta.client_request_id
+        );
+    }
+
+    #[test]
+    fn test_thread_posts_multiple_tweets() {
+        let (cmd, _temp) = create_test_command_with_fixture();
+
+        let args = ThreadArgs {
+            texts: vec![
+                "First tweet".to_string(),
+                "Second tweet".to_string(),
+                "Third tweet".to_string(),
+            ],
+            client_request_id_prefix: Some("thread-001".to_string()),
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        let result = cmd.thread(args).unwrap();
+        assert_eq!(result.tweets.len(), 3);
+        assert_eq!(result.meta.count, 3);
+        assert_eq!(result.meta.created_tweet_ids.len(), 3);
+        assert!(result.meta.failed_index.is_none());
+    }
+
+    #[test]
+    fn test_thread_empty_fails() {
+        let (cmd, _temp) = create_test_command_with_fixture();
+
+        let args = ThreadArgs {
+            texts: vec![],
+            client_request_id_prefix: None,
+            if_exists: IfExistsPolicy::Return,
+        };
+
+        let result = cmd.thread(args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_show_returns_tweet() {
+        let (cmd, _temp) = create_test_command_with_fixture();
+
+        let args = ShowArgs {
+            tweet_id: "tweet_root".to_string(),
+        };
+
+        let result = cmd.show(args).unwrap();
+        assert_eq!(result.tweet.id, "tweet_root");
+        assert_eq!(
+            result.tweet.conversation_id,
+            Some("conv_root_001".to_string())
+        );
+    }
+
+    #[test]
+    fn test_show_not_found() {
+        let (cmd, _temp) = create_test_command_with_fixture();
+
+        let args = ShowArgs {
+            tweet_id: "nonexistent_tweet".to_string(),
+        };
+
+        let result = cmd.show(args);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_conversation_returns_tree() {
+        let (cmd, _temp) = create_test_command_with_fixture();
+
+        let args = ConversationArgs {
+            tweet_id: "tweet_root".to_string(),
+        };
+
+        let result = cmd.conversation(args).unwrap();
+        // Should include root + replies
+        assert!(!result.posts.is_empty());
+        assert!(result.posts.iter().any(|t| t.id == "tweet_root"));
+        // Should have edges connecting replies to parents
+        assert!(!result.edges.is_empty());
+    }
+
+    #[test]
+    fn test_conversation_edges_structure() {
+        let (cmd, _temp) = create_test_command_with_fixture();
+
+        let args = ConversationArgs {
+            tweet_id: "tweet_root".to_string(),
+        };
+
+        let result = cmd.conversation(args).unwrap();
+        // tweet_reply1 is a reply to tweet_root
+        let root_edge = result
+            .edges
+            .iter()
+            .find(|e| e.parent_id == "tweet_root" && e.child_id == "tweet_reply1");
+        assert!(root_edge.is_some(), "Expected edge from root to reply1");
+
+        // tweet_reply2 is a reply to tweet_reply1
+        let reply_edge = result
+            .edges
+            .iter()
+            .find(|e| e.parent_id == "tweet_reply1" && e.child_id == "tweet_reply2");
+        assert!(reply_edge.is_some(), "Expected edge from reply1 to reply2");
     }
 }

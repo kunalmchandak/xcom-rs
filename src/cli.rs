@@ -134,6 +134,49 @@ pub enum TweetsCommands {
         #[arg(long)]
         cursor: Option<String>,
     },
+
+    /// Reply to a tweet
+    Reply {
+        /// ID of the tweet to reply to
+        tweet_id: String,
+
+        /// Reply text content
+        text: String,
+
+        /// Client request ID for idempotency (auto-generated if not provided)
+        #[arg(long)]
+        client_request_id: Option<String>,
+
+        /// Policy when operation with same client_request_id exists
+        #[arg(long, default_value = "return")]
+        if_exists: String,
+    },
+
+    /// Post a thread of tweets (sequential replies)
+    Thread {
+        /// Tweet texts (at least one required; first is standalone, rest are replies)
+        texts: Vec<String>,
+
+        /// Prefix for generating per-tweet client_request_ids
+        #[arg(long)]
+        client_request_id_prefix: Option<String>,
+
+        /// Policy when operation with same client_request_id exists
+        #[arg(long, default_value = "return")]
+        if_exists: String,
+    },
+
+    /// Show a single tweet by ID
+    Show {
+        /// Tweet ID to fetch
+        tweet_id: String,
+    },
+
+    /// Retrieve a conversation tree starting from a tweet
+    Conversation {
+        /// Tweet ID (root of the conversation)
+        tweet_id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -356,6 +399,131 @@ mod tests {
             assert_eq!(cursor, Some("cursor_5".to_string()));
         } else {
             panic!("Expected Search Users command with limit and cursor");
+        }
+    }
+
+    #[test]
+    fn test_tweets_reply_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "reply", "tweet_123", "Hello!"]);
+        if let Some(Commands::Tweets {
+            command:
+                TweetsCommands::Reply {
+                    tweet_id,
+                    text,
+                    client_request_id,
+                    if_exists,
+                },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet_123");
+            assert_eq!(text, "Hello!");
+            assert!(client_request_id.is_none());
+            assert_eq!(if_exists, "return");
+        } else {
+            panic!("Expected Tweets Reply command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_reply_with_client_request_id() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "tweets",
+            "reply",
+            "tweet_123",
+            "Hello!",
+            "--client-request-id",
+            "my-reply-001",
+        ]);
+        if let Some(Commands::Tweets {
+            command:
+                TweetsCommands::Reply {
+                    tweet_id,
+                    text,
+                    client_request_id,
+                    if_exists,
+                },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet_123");
+            assert_eq!(text, "Hello!");
+            assert_eq!(client_request_id, Some("my-reply-001".to_string()));
+            assert_eq!(if_exists, "return");
+        } else {
+            panic!("Expected Tweets Reply command with client_request_id");
+        }
+    }
+
+    #[test]
+    fn test_tweets_thread_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "thread", "First tweet", "Second tweet"]);
+        if let Some(Commands::Tweets {
+            command:
+                TweetsCommands::Thread {
+                    texts,
+                    client_request_id_prefix,
+                    if_exists,
+                },
+        }) = cli.command
+        {
+            assert_eq!(texts, vec!["First tweet", "Second tweet"]);
+            assert!(client_request_id_prefix.is_none());
+            assert_eq!(if_exists, "return");
+        } else {
+            panic!("Expected Tweets Thread command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_thread_with_prefix() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "tweets",
+            "thread",
+            "A",
+            "B",
+            "--client-request-id-prefix",
+            "thread-001",
+        ]);
+        if let Some(Commands::Tweets {
+            command:
+                TweetsCommands::Thread {
+                    texts,
+                    client_request_id_prefix,
+                    if_exists: _,
+                },
+        }) = cli.command
+        {
+            assert_eq!(texts, vec!["A", "B"]);
+            assert_eq!(client_request_id_prefix, Some("thread-001".to_string()));
+        } else {
+            panic!("Expected Tweets Thread command with prefix");
+        }
+    }
+
+    #[test]
+    fn test_tweets_show_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "show", "tweet_999"]);
+        if let Some(Commands::Tweets {
+            command: TweetsCommands::Show { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet_999");
+        } else {
+            panic!("Expected Tweets Show command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_conversation_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "conversation", "tweet_root"]);
+        if let Some(Commands::Tweets {
+            command: TweetsCommands::Conversation { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet_root");
+        } else {
+            panic!("Expected Tweets Conversation command");
         }
     }
 }

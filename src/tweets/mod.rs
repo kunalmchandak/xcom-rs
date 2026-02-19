@@ -1,10 +1,13 @@
 /// Tweets operations with idempotent execution support
+pub mod client;
 pub mod commands;
 pub mod ledger;
 pub mod models;
 
+pub use client::MockTweetApiClient;
 pub use commands::{
-    ClassifiedError, CreateArgs, IdempotencyConflictError, IfExistsPolicy, ListArgs, TweetCommand,
+    ClassifiedError, ConversationArgs, CreateArgs, IdempotencyConflictError, IfExistsPolicy,
+    ListArgs, ReplyArgs, ShowArgs, ThreadArgs, TweetCommand,
 };
 pub use ledger::IdempotencyLedger;
-pub use models::{Tweet, TweetFields, TweetMeta};
+pub use models::{ConversationResult, Tweet, TweetFields, TweetMeta};
