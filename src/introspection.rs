@@ -272,8 +272,8 @@ impl CommandSchema {
                         "pagination": {
                             "type": "object",
                             "properties": {
-                                "nextToken": { "type": "string" },
-                                "previousToken": { "type": "string" }
+                                "next_token": { "type": "string" },
+                                "previous_token": { "type": "string" }
                             }
                         }
                     }

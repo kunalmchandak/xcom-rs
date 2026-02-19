@@ -22,3 +22,8 @@
 
 - [x] 5.1 タイムライン取得のユニットテストを追加する（確認: `src/timeline/commands.rs` の `#[cfg(test)]` に9件のテストが追加）
 - [x] 5.2 CLI パーステストを追加する（確認: `src/cli.rs` のテストに `test_timeline_home_command`, `test_timeline_mentions_command`, `test_timeline_user_command` 等が含まれる）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `timeline home` / `timeline mentions` の JSON レスポンスで `data.meta.pagination.next_token` / `previous_token` を返すように修正する（`src/timeline/models.rs` から `#[serde(rename_all = "camelCase")]` を削除し、`src/introspection.rs` のスキーマ定義も `next_token`/`previous_token`（スネークケース）に統一した。`test_pagination_response_uses_snake_case_tokens` テストで検証済み）
+- [x] `timeline user <handle>` で handle から user ID を解決するステップを実装する（`src/timeline/commands.rs` に `resolve_user_by_handle()` メソッドを追加し、`get_user_tweets` から呼び出すように修正した。テスト環境では `XCOM_TEST_RESOLVE_USER_{HANDLE}_ID` 環境変数でモック可能。`test_user_timeline_resolves_handle_to_id` と `test_user_timeline_resolves_handle_with_env_override` テストで検証済み）

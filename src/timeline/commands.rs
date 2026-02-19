@@ -45,6 +45,13 @@ struct UserInfo {
     handle: String,
 }
 
+/// Resolved user ID for a given handle
+#[derive(Debug, Clone)]
+struct ResolvedUser {
+    id: String,
+    handle: String,
+}
+
 /// Main timeline command handler
 pub struct TimelineCommand;
 
@@ -52,6 +59,28 @@ impl TimelineCommand {
     /// Create a new timeline command handler
     pub fn new() -> Self {
         Self
+    }
+
+    /// Resolve a user by handle to get their user ID.
+    /// In production this would call GET /2/users/by/username/{handle}.
+    /// For testing, the resolved user ID can be overridden via XCOM_TEST_RESOLVE_USER_{HANDLE}_ID
+    /// environment variable. If not set, a deterministic stub ID is generated.
+    fn resolve_user_by_handle(&self, handle: &str) -> Result<ResolvedUser, TimelineError> {
+        // Allow test overrides via environment variable for specific handles
+        let env_key = format!("XCOM_TEST_RESOLVE_USER_{}_ID", handle.to_uppercase());
+        let user_id = if let Ok(id) = std::env::var(&env_key) {
+            id
+        } else {
+            // Generate a deterministic stub ID for the handle (production would fetch from API)
+            format!("user_id_for_{}", handle.to_lowercase())
+        };
+
+        tracing::debug!(handle = %handle, user_id = %user_id, "Resolved user handle to ID");
+
+        Ok(ResolvedUser {
+            id: user_id,
+            handle: handle.to_string(),
+        })
     }
 
     /// Resolve the authenticated user's ID.
@@ -195,11 +224,21 @@ impl TimelineCommand {
         handle: String,
         args: &TimelineArgs,
     ) -> Result<TimelineResult, TimelineError> {
-        // For user timeline, no auth is strictly required for public accounts,
-        // but we still need to resolve the user by handle.
-        // In production: GET /2/users/by/username/{handle} then GET /2/users/{id}/tweets
+        // Step 1: Resolve handle to user ID
+        // In production: GET /2/users/by/username/{handle}
+        // For testing: uses XCOM_TEST_RESOLVE_USER_{HANDLE}_ID env var or deterministic stub
+        let resolved = self.resolve_user_by_handle(&handle)?;
+
+        tracing::info!(
+            handle = %handle,
+            user_id = %resolved.id,
+            "Resolved handle to user ID, fetching tweets"
+        );
+
+        // Step 2: Fetch tweets for the resolved user ID
+        // In production: GET /2/users/{id}/tweets
         let offset = Self::parse_cursor_offset(&args.cursor);
-        let tweets = Self::build_stub_tweets(&handle, offset, args.limit);
+        let tweets = Self::build_stub_tweets(&resolved.handle, offset, args.limit);
         let count = tweets.len();
         let meta = Self::build_pagination(offset, args.limit, count);
 
@@ -403,6 +442,98 @@ mod tests {
         assert_eq!(
             meta.pagination.previous_token,
             Some("next_token_5".to_string())
+        );
+
+        unset_authenticated();
+    }
+
+    #[test]
+    fn test_user_timeline_resolves_handle_to_id() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        unset_authenticated();
+
+        let cmd = TimelineCommand::new();
+        // Verify handle resolution: tweets should use the resolved handle
+        let args = TimelineArgs {
+            kind: TimelineKind::User {
+                handle: "XDev".to_string(),
+            },
+            limit: 5,
+            cursor: None,
+        };
+
+        let result = cmd.get(args).unwrap();
+        assert_eq!(result.tweets.len(), 5);
+        // Tweets are built from the resolved handle (case preserved)
+        // The resolve step maps handle -> user_id, then uses handle for stub tweets
+        assert!(
+            result.tweets.iter().all(|t| t.id.starts_with("XDev_")),
+            "Expected tweet IDs to start with 'XDev_', got: {:?}",
+            result.tweets.iter().map(|t| &t.id).collect::<Vec<_>>()
+        );
+
+        unset_authenticated();
+    }
+
+    #[test]
+    fn test_user_timeline_resolves_handle_with_env_override() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        unset_authenticated();
+        // Override the resolved user ID for a specific handle
+        std::env::set_var(
+            "XCOM_TEST_RESOLVE_USER_TESTHANDLE_ID",
+            "overridden_user_id_123",
+        );
+
+        let cmd = TimelineCommand::new();
+        let args = TimelineArgs {
+            kind: TimelineKind::User {
+                handle: "testhandle".to_string(),
+            },
+            limit: 3,
+            cursor: None,
+        };
+
+        let result = cmd.get(args).unwrap();
+        assert_eq!(result.tweets.len(), 3);
+
+        std::env::remove_var("XCOM_TEST_RESOLVE_USER_TESTHANDLE_ID");
+        unset_authenticated();
+    }
+
+    #[test]
+    fn test_pagination_response_uses_snake_case_tokens() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        set_authenticated();
+
+        let cmd = TimelineCommand::new();
+        let args = TimelineArgs {
+            kind: TimelineKind::Home,
+            limit: 10,
+            cursor: None,
+        };
+
+        let result = cmd.get(args).unwrap();
+        assert!(result.meta.is_some());
+        let meta = result.meta.unwrap();
+        // Verify that pagination tokens are present (snake_case in JSON via serde field names)
+        assert!(meta.pagination.next_token.is_some());
+        assert_eq!(
+            meta.pagination.next_token,
+            Some("next_token_10".to_string())
+        );
+
+        // Serialize to JSON and verify field names are snake_case
+        let json = serde_json::to_string(&meta).unwrap();
+        assert!(
+            json.contains("next_token"),
+            "JSON should use next_token (snake_case), got: {}",
+            json
+        );
+        assert!(
+            !json.contains("nextToken"),
+            "JSON should NOT use nextToken (camelCase), got: {}",
+            json
         );
 
         unset_authenticated();

@@ -23,7 +23,6 @@ pub struct TimelineArgs {
 
 /// Pagination information for timeline results
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct TimelinePagination {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_token: Option<String>,
