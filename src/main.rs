@@ -97,6 +97,9 @@ fn main() {
         Commands::Tweets { command } => {
             handlers::tweets::handle_tweets(command, &create_meta, output_format)
         }
+        Commands::Bookmarks { command } => {
+            handlers::bookmarks::handle_bookmarks(command, &create_meta, output_format)
+        }
         Commands::Auth { command } => {
             handlers::auth::handle_auth(command, &mut auth_store, &create_meta, output_format)
         }
@@ -125,6 +128,9 @@ fn main() {
         }
         Commands::Timeline { command } => {
             handlers::timeline::handle_timeline(command, &create_meta, output_format)
+        }
+        Commands::Media { command } => {
+            handlers::media::handle_media(command, &create_meta, output_format)
         }
     };
 

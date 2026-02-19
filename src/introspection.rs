@@ -351,6 +351,119 @@ impl CommandsList {
                     risk: RiskLevel::Safe,
                     has_cost: true,
                 },
+                CommandInfo {
+                    name: "media.upload".to_string(),
+                    description: "Upload a media file and return the media_id".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "path".to_string(),
+                        description: "Path to the media file to upload".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets like".to_string(),
+                    description: "Like a tweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to like".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets unlike".to_string(),
+                    description: "Unlike a tweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to unlike".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets retweet".to_string(),
+                    description: "Retweet a tweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to retweet".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Medium,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "tweets unretweet".to_string(),
+                    description: "Undo a retweet".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to unretweet".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "bookmarks add".to_string(),
+                    description: "Add a tweet to bookmarks".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to bookmark".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "bookmarks remove".to_string(),
+                    description: "Remove a tweet from bookmarks".to_string(),
+                    arguments: vec![ArgumentInfo {
+                        name: "tweet_id".to_string(),
+                        description: "Tweet ID to remove from bookmarks".to_string(),
+                        required: true,
+                        arg_type: "string".to_string(),
+                        default: None,
+                    }],
+                    risk: RiskLevel::Low,
+                    has_cost: true,
+                },
+                CommandInfo {
+                    name: "bookmarks list".to_string(),
+                    description: "List bookmarked tweets".to_string(),
+                    arguments: vec![
+                        ArgumentInfo {
+                            name: "limit".to_string(),
+                            description: "Maximum number of bookmarks to return".to_string(),
+                            required: false,
+                            arg_type: "integer".to_string(),
+                            default: Some("10".to_string()),
+                        },
+                        ArgumentInfo {
+                            name: "cursor".to_string(),
+                            description: "Pagination cursor".to_string(),
+                            required: false,
+                            arg_type: "string".to_string(),
+                            default: None,
+                        },
+                    ],
+                    risk: RiskLevel::Safe,
+                    has_cost: true,
+                },
             ],
         }
     }
@@ -880,6 +993,103 @@ impl CommandSchema {
                 }),
                 output_schema: Self::wrap_in_envelope_schema(Self::timeline_output_schema()),
             },
+            "media.upload" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["path"],
+                    "properties": {
+                        "path": { "type": "string", "description": "Path to the media file to upload" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["media_id"],
+                    "properties": {
+                        "media_id": { "type": "string", "description": "The media ID returned by the X API" }
+                    }
+                })),
+            },
+            "tweets like" | "tweets unlike" | "tweets retweet" | "tweets unretweet" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id"],
+                    "properties": {
+                        "tweet_id": { "type": "string", "description": "Tweet ID" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id", "success"],
+                    "properties": {
+                        "tweet_id": { "type": "string" },
+                        "success": { "type": "boolean" }
+                    }
+                })),
+            },
+            "bookmarks add" | "bookmarks remove" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id"],
+                    "properties": {
+                        "tweet_id": { "type": "string", "description": "Tweet ID" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweet_id", "success"],
+                    "properties": {
+                        "tweet_id": { "type": "string" },
+                        "success": { "type": "boolean" }
+                    }
+                })),
+            },
+            "bookmarks list" => Self {
+                command: command.to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "default": 10 },
+                        "cursor": { "type": "string" }
+                    },
+                    "additionalProperties": false
+                }),
+                output_schema: Self::wrap_in_envelope_schema(serde_json::json!({
+                    "type": "object",
+                    "required": ["tweets"],
+                    "properties": {
+                        "tweets": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["id"],
+                                "properties": {
+                                    "id": { "type": "string" },
+                                    "text": { "type": "string" },
+                                    "author_id": { "type": "string" },
+                                    "created_at": { "type": "string" }
+                                }
+                            }
+                        },
+                        "meta": {
+                            "type": "object",
+                            "properties": {
+                                "pagination": {
+                                    "type": "object",
+                                    "properties": {
+                                        "next_token": { "type": "string" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
             _ => Self {
                 command: command.to_string(),
                 input_schema: serde_json::json!({
@@ -1266,6 +1476,110 @@ impl CommandHelp {
                     },
                 ],
             },
+            "media.upload" => Self {
+                command: command.to_string(),
+                description: "Upload a media file to X and return the media_id (uses POST /2/media/upload)".to_string(),
+                usage: "xcom-rs media upload <path> [--output json|yaml|text]".to_string(),
+                exit_codes: exit_codes.clone(),
+                error_vocabulary: error_vocabulary.clone(),
+                examples: vec![
+                    ExampleInfo {
+                        description: "Upload an image and get media_id in JSON format".to_string(),
+                        command: "xcom-rs media upload /path/to/image.jpg --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "Upload a video file".to_string(),
+                        command: "xcom-rs media upload /path/to/video.mp4 --output json".to_string(),
+                    },
+                ],
+            },
+            "tweets like" => Self {
+                command: command.to_string(),
+                description: "Like a tweet on X.com".to_string(),
+                usage: "xcom-rs tweets like <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Like a specific tweet".to_string(),
+                    command: "xcom-rs tweets like 1234567890 --output json".to_string(),
+                }],
+            },
+            "tweets unlike" => Self {
+                command: command.to_string(),
+                description: "Unlike a tweet on X.com".to_string(),
+                usage: "xcom-rs tweets unlike <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Unlike a specific tweet".to_string(),
+                    command: "xcom-rs tweets unlike 1234567890 --output json".to_string(),
+                }],
+            },
+            "tweets retweet" => Self {
+                command: command.to_string(),
+                description: "Retweet a tweet on X.com".to_string(),
+                usage: "xcom-rs tweets retweet <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Retweet a specific tweet".to_string(),
+                    command: "xcom-rs tweets retweet 1234567890 --output json".to_string(),
+                }],
+            },
+            "tweets unretweet" => Self {
+                command: command.to_string(),
+                description: "Undo a retweet on X.com".to_string(),
+                usage: "xcom-rs tweets unretweet <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Unretweet a specific tweet".to_string(),
+                    command: "xcom-rs tweets unretweet 1234567890 --output json".to_string(),
+                }],
+            },
+            "bookmarks add" => Self {
+                command: command.to_string(),
+                description: "Add a tweet to bookmarks on X.com".to_string(),
+                usage: "xcom-rs bookmarks add <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Bookmark a specific tweet".to_string(),
+                    command: "xcom-rs bookmarks add 1234567890 --output json".to_string(),
+                }],
+            },
+            "bookmarks remove" => Self {
+                command: command.to_string(),
+                description: "Remove a tweet from bookmarks on X.com".to_string(),
+                usage: "xcom-rs bookmarks remove <tweet_id> [--output json|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![ExampleInfo {
+                    description: "Remove a specific tweet from bookmarks".to_string(),
+                    command: "xcom-rs bookmarks remove 1234567890 --output json".to_string(),
+                }],
+            },
+            "bookmarks list" => Self {
+                command: command.to_string(),
+                description: "List bookmarked tweets on X.com".to_string(),
+                usage: "xcom-rs bookmarks list [--limit N] [--cursor <token>] [--output json|ndjson|yaml|text]".to_string(),
+                exit_codes,
+                error_vocabulary,
+                examples: vec![
+                    ExampleInfo {
+                        description: "List bookmarks with JSON output".to_string(),
+                        command: "xcom-rs bookmarks list --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "List bookmarks with limit and cursor".to_string(),
+                        command: "xcom-rs bookmarks list --limit 20 --cursor <next_token> --output json".to_string(),
+                    },
+                    ExampleInfo {
+                        description: "List bookmarks as NDJSON stream".to_string(),
+                        command: "xcom-rs bookmarks list --output ndjson".to_string(),
+                    },
+                ],
+            },
             _ => Self {
                 command: command.to_string(),
                 description: format!("Help for {}", command),
@@ -1289,6 +1603,48 @@ mod tests {
         assert!(list.commands.iter().any(|c| c.name == "commands"));
         assert!(list.commands.iter().any(|c| c.name == "schema"));
         assert!(list.commands.iter().any(|c| c.name == "help"));
+    }
+
+    #[test]
+    fn test_commands_list_includes_media_upload() {
+        let list = CommandsList::new();
+        let media_cmd = list.commands.iter().find(|c| c.name == "media.upload");
+        assert!(
+            media_cmd.is_some(),
+            "media.upload should be in commands list"
+        );
+        let media_cmd = media_cmd.unwrap();
+        assert_eq!(media_cmd.risk, RiskLevel::Medium);
+        assert!(media_cmd.has_cost);
+        let path_arg = media_cmd.arguments.iter().find(|a| a.name == "path");
+        assert!(path_arg.is_some(), "media.upload should have path argument");
+        assert!(
+            path_arg.unwrap().required,
+            "path argument should be required"
+        );
+    }
+
+    #[test]
+    fn test_media_upload_schema() {
+        let schema = CommandSchema::for_command("media.upload");
+        assert_eq!(schema.command, "media.upload");
+        assert!(schema.input_schema.is_object());
+        assert!(schema.output_schema.is_object());
+        let required = schema.input_schema["required"].as_array().unwrap();
+        assert!(
+            required.iter().any(|v| v.as_str() == Some("path")),
+            "media.upload input schema should require path"
+        );
+    }
+
+    #[test]
+    fn test_media_upload_help() {
+        let help = CommandHelp::for_command("media.upload");
+        assert_eq!(help.command, "media.upload");
+        assert!(!help.exit_codes.is_empty());
+        assert!(!help.error_vocabulary.is_empty());
+        assert!(!help.examples.is_empty());
+        assert!(help.usage.contains("media upload"));
     }
 
     #[test]

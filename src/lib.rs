@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod billing;
+pub mod bookmarks;
 pub mod cli;
 pub mod context;
 pub mod doctor;
@@ -7,6 +8,7 @@ pub mod errors;
 pub mod handlers;
 pub mod introspection;
 pub mod logging;
+pub mod media;
 pub mod output;
 pub mod protocol;
 pub mod search;

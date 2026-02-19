@@ -63,6 +63,12 @@ pub enum Commands {
         command: TweetsCommands,
     },
 
+    /// Bookmark operations
+    Bookmarks {
+        #[command(subcommand)]
+        command: BookmarksCommands,
+    },
+
     /// Authentication commands
     Auth {
         #[command(subcommand)]
@@ -107,6 +113,12 @@ pub enum Commands {
     Timeline {
         #[command(subcommand)]
         command: TimelineCommands,
+    },
+
+    /// Media operations
+    Media {
+        #[command(subcommand)]
+        command: MediaCommands,
     },
 }
 
@@ -180,6 +192,30 @@ pub enum TweetsCommands {
         cursor: Option<String>,
     },
 
+    /// Like a tweet
+    Like {
+        /// Tweet ID to like
+        tweet_id: String,
+    },
+
+    /// Unlike a tweet
+    Unlike {
+        /// Tweet ID to unlike
+        tweet_id: String,
+    },
+
+    /// Retweet a tweet
+    Retweet {
+        /// Tweet ID to retweet
+        tweet_id: String,
+    },
+
+    /// Undo a retweet
+    Unretweet {
+        /// Tweet ID to unretweet
+        tweet_id: String,
+    },
+
     /// Reply to a tweet
     Reply {
         /// ID of the tweet to reply to
@@ -225,6 +261,32 @@ pub enum TweetsCommands {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum BookmarksCommands {
+    /// Add a tweet to bookmarks
+    Add {
+        /// Tweet ID to bookmark
+        tweet_id: String,
+    },
+
+    /// Remove a tweet from bookmarks
+    Remove {
+        /// Tweet ID to remove from bookmarks
+        tweet_id: String,
+    },
+
+    /// List bookmarked tweets
+    List {
+        /// Maximum number of bookmarks to return
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Pagination cursor
+        #[arg(long)]
+        cursor: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum AuthCommands {
     /// Get current authentication status
     Status,
@@ -257,6 +319,15 @@ pub enum BillingCommands {
 
     /// Get billing report
     Report,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MediaCommands {
+    /// Upload a media file and return the media_id
+    Upload {
+        /// Path to the media file to upload
+        path: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -336,6 +407,120 @@ mod tests {
     fn test_cli_without_subcommand() {
         let cli = Cli::parse_from(["xcom-rs"]);
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn test_tweets_like_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "like", "tweet123"]);
+        if let Some(Commands::Tweets {
+            command: TweetsCommands::Like { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet123");
+        } else {
+            panic!("Expected Tweets Like command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_unlike_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "unlike", "tweet123"]);
+        if let Some(Commands::Tweets {
+            command: TweetsCommands::Unlike { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet123");
+        } else {
+            panic!("Expected Tweets Unlike command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_retweet_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "retweet", "tweet123"]);
+        if let Some(Commands::Tweets {
+            command: TweetsCommands::Retweet { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet123");
+        } else {
+            panic!("Expected Tweets Retweet command");
+        }
+    }
+
+    #[test]
+    fn test_tweets_unretweet_command() {
+        let cli = Cli::parse_from(["xcom-rs", "tweets", "unretweet", "tweet123"]);
+        if let Some(Commands::Tweets {
+            command: TweetsCommands::Unretweet { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet123");
+        } else {
+            panic!("Expected Tweets Unretweet command");
+        }
+    }
+
+    #[test]
+    fn test_bookmarks_add_command() {
+        let cli = Cli::parse_from(["xcom-rs", "bookmarks", "add", "tweet123"]);
+        if let Some(Commands::Bookmarks {
+            command: BookmarksCommands::Add { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet123");
+        } else {
+            panic!("Expected Bookmarks Add command");
+        }
+    }
+
+    #[test]
+    fn test_bookmarks_remove_command() {
+        let cli = Cli::parse_from(["xcom-rs", "bookmarks", "remove", "tweet123"]);
+        if let Some(Commands::Bookmarks {
+            command: BookmarksCommands::Remove { tweet_id },
+        }) = cli.command
+        {
+            assert_eq!(tweet_id, "tweet123");
+        } else {
+            panic!("Expected Bookmarks Remove command");
+        }
+    }
+
+    #[test]
+    fn test_bookmarks_list_command() {
+        let cli = Cli::parse_from(["xcom-rs", "bookmarks", "list", "--limit", "10"]);
+        if let Some(Commands::Bookmarks {
+            command: BookmarksCommands::List { limit, cursor },
+        }) = cli.command
+        {
+            assert_eq!(limit, Some(10));
+            assert!(cursor.is_none());
+        } else {
+            panic!("Expected Bookmarks List command");
+        }
+    }
+
+    #[test]
+    fn test_bookmarks_list_with_cursor() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "bookmarks",
+            "list",
+            "--limit",
+            "5",
+            "--cursor",
+            "next_page_token",
+        ]);
+        if let Some(Commands::Bookmarks {
+            command: BookmarksCommands::List { limit, cursor },
+        }) = cli.command
+        {
+            assert_eq!(limit, Some(5));
+            assert_eq!(cursor, Some("next_page_token".to_string()));
+        } else {
+            panic!("Expected Bookmarks List command");
+        }
     }
 
     #[test]
@@ -673,6 +858,41 @@ mod tests {
             assert_eq!(tweet_id, "tweet_root");
         } else {
             panic!("Expected Tweets Conversation command");
+        }
+    }
+
+    // Task 5.2 – CLI parse tests for media commands
+    #[test]
+    fn test_media_upload_command() {
+        let cli = Cli::parse_from(["xcom-rs", "media", "upload", "/tmp/image.jpg"]);
+        if let Some(Commands::Media {
+            command: MediaCommands::Upload { path },
+        }) = cli.command
+        {
+            assert_eq!(path, "/tmp/image.jpg");
+        } else {
+            panic!("Expected Media::Upload command");
+        }
+    }
+
+    #[test]
+    fn test_media_upload_with_output_json() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "--output",
+            "json",
+            "media",
+            "upload",
+            "/tmp/photo.png",
+        ]);
+        assert_eq!(cli.output, "json");
+        if let Some(Commands::Media {
+            command: MediaCommands::Upload { path },
+        }) = cli.command
+        {
+            assert_eq!(path, "/tmp/photo.png");
+        } else {
+            panic!("Expected Media::Upload command with output format");
         }
     }
 }
