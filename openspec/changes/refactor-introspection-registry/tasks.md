@@ -19,4 +19,4 @@
 
 ## Acceptance #1 Failure Follow-up
 
-- [ ] Git working tree が dirty です。`git status --porcelain` が空になるように、`openspec/changes/refactor-introspection-registry/tasks.md` の変更をコミットするか、意図しない変更なら差し戻してください。
+- [x] Git working tree が dirty です。`git status --porcelain` が空になるように、`openspec/changes/refactor-introspection-registry/tasks.md` の変更をコミットするか、意図しない変更なら差し戻してください。
