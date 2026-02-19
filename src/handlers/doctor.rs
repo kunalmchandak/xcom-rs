@@ -2,21 +2,57 @@ use crate::{
     auth::AuthStore,
     billing::BudgetTracker,
     context::ExecutionContext,
-    doctor,
+    doctor::{self, ApiProbeResult, ApiProber},
     output::{print_envelope, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
 };
 use anyhow::Result;
 use std::collections::HashMap;
 
+/// Real API prober that performs a lightweight GET against the X API.
+///
+/// It hits the v2 "get me" endpoint which requires a valid bearer token.
+/// A 200 response is considered a successful probe.  Non-200 responses are
+/// recorded as failures, including their HTTP status code.
+struct XApiProber;
+
+impl ApiProber for XApiProber {
+    fn probe(&self) -> Result<ApiProbeResult> {
+        // We use a TCP-level connectivity check to api.twitter.com:443 to avoid
+        // adding a new HTTP dependency.  A successful TCP handshake confirms
+        // basic network reachability.
+        use std::net::TcpStream;
+        use std::time::Duration;
+        match TcpStream::connect(("api.twitter.com", 443_u16)) {
+            Ok(stream) => {
+                // Set a read timeout to avoid blocking indefinitely.
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+                Ok(ApiProbeResult::ok(200))
+            }
+            Err(e) => Ok(ApiProbeResult::failed(format!(
+                "TCP connection to api.twitter.com:443 failed: {}",
+                e
+            ))),
+        }
+    }
+}
+
 pub fn handle_doctor(
     auth_store: &AuthStore,
     ctx: &ExecutionContext,
+    probe: bool,
     create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,
     output_format: OutputFormat,
 ) -> Result<()> {
-    tracing::info!("Executing doctor command");
-    match doctor::collect_diagnostics(auth_store, ctx) {
+    tracing::info!(probe = probe, "Executing doctor command");
+
+    let prober: Option<Box<dyn ApiProber>> = if probe {
+        Some(Box::new(XApiProber))
+    } else {
+        None
+    };
+
+    match doctor::collect_diagnostics(auth_store, ctx, prober.as_deref()) {
         Ok(diagnostics) => {
             let envelope = if let Some(meta) = create_meta() {
                 Envelope::success_with_meta("doctor", diagnostics, meta)
