@@ -126,6 +126,9 @@ fn main() {
         Commands::Timeline { command } => {
             handlers::timeline::handle_timeline(command, &create_meta, output_format)
         }
+        Commands::Media { command } => {
+            handlers::media::handle_media(command, &create_meta, output_format)
+        }
     };
 
     match result {

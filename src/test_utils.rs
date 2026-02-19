@@ -29,6 +29,25 @@ pub mod search_fixtures {
     }
 }
 
+pub mod media_fixtures {
+    use crate::media::models::UploadResult;
+
+    /// Fixed media ID used across unit tests
+    pub const FIXTURE_MEDIA_ID: &str = "fixture_media_id_0000000000000001";
+
+    /// Create an UploadResult with the fixture media_id
+    pub fn create_upload_result() -> UploadResult {
+        UploadResult::new(FIXTURE_MEDIA_ID)
+    }
+
+    /// Create multiple UploadResult fixtures
+    pub fn create_upload_results(count: usize) -> Vec<UploadResult> {
+        (0..count)
+            .map(|i| UploadResult::new(format!("fixture_media_id_{:016}", i)))
+            .collect()
+    }
+}
+
 pub mod env_lock {
     use std::sync::Mutex;
 

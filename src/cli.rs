@@ -108,6 +108,12 @@ pub enum Commands {
         #[command(subcommand)]
         command: TimelineCommands,
     },
+
+    /// Media operations
+    Media {
+        #[command(subcommand)]
+        command: MediaCommands,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -214,6 +220,15 @@ pub enum BillingCommands {
 
     /// Get billing report
     Report,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum MediaCommands {
+    /// Upload a media file and return the media_id
+    Upload {
+        /// Path to the media file to upload
+        path: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -505,6 +520,41 @@ mod tests {
             assert_eq!(cursor, Some("cursor_5".to_string()));
         } else {
             panic!("Expected Search Users command with limit and cursor");
+        }
+    }
+
+    // Task 5.2 – CLI parse tests for media commands
+    #[test]
+    fn test_media_upload_command() {
+        let cli = Cli::parse_from(["xcom-rs", "media", "upload", "/tmp/image.jpg"]);
+        if let Some(Commands::Media {
+            command: MediaCommands::Upload { path },
+        }) = cli.command
+        {
+            assert_eq!(path, "/tmp/image.jpg");
+        } else {
+            panic!("Expected Media::Upload command");
+        }
+    }
+
+    #[test]
+    fn test_media_upload_with_output_json() {
+        let cli = Cli::parse_from([
+            "xcom-rs",
+            "--output",
+            "json",
+            "media",
+            "upload",
+            "/tmp/photo.png",
+        ]);
+        assert_eq!(cli.output, "json");
+        if let Some(Commands::Media {
+            command: MediaCommands::Upload { path },
+        }) = cli.command
+        {
+            assert_eq!(path, "/tmp/photo.png");
+        } else {
+            panic!("Expected Media::Upload command with output format");
         }
     }
 }

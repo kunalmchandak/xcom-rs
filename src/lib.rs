@@ -7,6 +7,7 @@ pub mod errors;
 pub mod handlers;
 pub mod introspection;
 pub mod logging;
+pub mod media;
 pub mod output;
 pub mod protocol;
 pub mod search;
