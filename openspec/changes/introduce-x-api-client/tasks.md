@@ -12,3 +12,8 @@
 
 - [x] 3.1 `mockito` を用いたHTTPリクエスト検証テストを追加する（検証: `cargo test x_api::` が成功する）
 - [x] 3.2 `Retry-After` / `x-rate-limit-reset` の解析テストを追加する（検証: 429時の `retryAfterMs` を確認するテストがある）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `HttpXApiClient` が実行フローに統合されておらずデッドコードになっているため、CLIの実経路で `XApiConfig`/`HttpXApiClient` を生成して利用する（証拠: `src/main.rs` に `x_api` 参照がなく、`HttpXApiClient` の利用が `src/x_api/client.rs` 内に限定されている）。
+- [x] 実行時デフォルトがモック実装のままのため、少なくとも本変更対象のX API呼び出し経路で `MockTweetApiClient` ではなく実HTTPクライアントを配線する（証拠: `TweetCommand::new` が `MockTweetApiClient::new()` を使用している `src/tweets/commands/mod.rs:38`）。

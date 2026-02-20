@@ -7,5 +7,5 @@
 mod client;
 mod error;
 
-pub use client::{HttpXApiClient, XApiClient};
+pub use client::{HttpXApiClient, XApiClient, XApiConfig};
 pub use error::{classify_response_error, parse_retry_after};

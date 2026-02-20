@@ -3,10 +3,12 @@ use crate::{
     output::{print_envelope, print_ndjson, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
     tweets::{
+        client::{HttpTweetApiClient, MockTweetApiClient, TweetApiClient},
         ClassifiedError, ConversationArgs, CreateArgs, EngagementArgs, IdempotencyConflictError,
         IdempotencyLedger, IfExistsPolicy, ListArgs, ReplyArgs, ShowArgs, ThreadArgs,
         ThreadPartialFailureError, TweetCommand, TweetFields,
     },
+    x_api::{HttpXApiClient, XApiConfig},
 };
 use anyhow::Result;
 use std::{collections::HashMap, str::FromStr};
@@ -18,7 +20,22 @@ pub fn handle_tweets(
 ) -> Result<()> {
     let ledger = IdempotencyLedger::new(None)
         .map_err(|e| anyhow::anyhow!("Failed to initialize idempotency ledger: {}", e))?;
-    let tweet_cmd = TweetCommand::new(ledger);
+
+    // Try to create HTTP client if XCOM_RS_BEARER_TOKEN is set
+    let api_client: Box<dyn TweetApiClient> = match XApiConfig::from_env() {
+        Ok(config) => {
+            tracing::info!("Using HTTP API client with bearer token");
+            Box::new(HttpTweetApiClient::new(HttpXApiClient::new(config)))
+        }
+        Err(_) => {
+            tracing::warn!(
+                "XCOM_RS_BEARER_TOKEN not set, using mock API client (stub implementation)"
+            );
+            Box::new(MockTweetApiClient::new())
+        }
+    };
+
+    let tweet_cmd = TweetCommand::with_client(ledger, api_client);
 
     match command {
         TweetsCommands::Create {
