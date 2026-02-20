@@ -4,10 +4,24 @@ version = "0.1.24"
 edition = "2021"
 rust-version = "1.70"
 description = "Agent-friendly X.com CLI with introspection, auth, billing, tweets, and embedded skills"
+authors = ["tumf <tumf@users.noreply.github.com>"]
 license = "MIT"
 readme = "README.md"
 keywords = ["cli", "automation", "agents", "twitter", "xcom"]
 categories = ["command-line-utilities"]
+repository = "https://github.com/tumf/xcom-rs"
+homepage = "https://github.com/tumf/xcom-rs"
+documentation = "https://docs.rs/xcom-rs"
+include = [
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+    "src/**",
+    "tests/**",
+    "examples/**",
+    "docs/**",
+    "skills/**",
+]
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
