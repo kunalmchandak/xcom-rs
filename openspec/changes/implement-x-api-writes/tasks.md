@@ -19,3 +19,9 @@
 
 - [x] 4.1 `mockito` で投稿作成/返信/スレッドのHTTPリクエスト検証テストを追加する（検証: `cargo test tweets::commands::` が成功する）
 - [x] 4.2 いいね/RT/ブックマーク/メディアアップロードのHTTPモックテストを追加する（検証: それぞれのコマンド単体テストが成功する）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `media upload` の実行経路をスタブから実APIクライアントへ接続する。`src/handlers/media.rs` の `handle_upload` が `StubMediaClient` を使っているため、`XMediaClient` を本番経路に配線し、スタブは `#[cfg(test)]` / `tests/` のみで使う。
+- [x] 4.2で完了済みとしたHTTPモックテストを不足分まで追加する。`tests/http_integration.rs` には `retweet/unretweet`、`bookmarks add/remove`、`media upload`（成功/401/503）の検証がないため、`mockito` で各エンドポイントのリクエスト/レスポンスを検証するテストを追加する。
+- [x] `cargo test --quiet` が外部API依存で失敗しているため、`tests/tweets_integration_test.rs` の `TweetCommand::new()` を使うケースをモック化（HTTPクライアント差し替えまたは `mockito` 利用）し、資格情報なしで常に通るテストへ修正する。

@@ -30,12 +30,14 @@ struct EngagementRequest {
 
 /// Response from engagement operations
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct EngagementResponse {
     data: EngagementData,
 }
 
 /// Engagement data from API response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct EngagementData {
     #[serde(default)]
     liked: bool,
@@ -64,6 +66,7 @@ struct UserMeResponse {
 
 /// User data from API response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct UserData {
     id: String,
     username: String,

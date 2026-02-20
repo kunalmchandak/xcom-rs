@@ -1,16 +1,35 @@
 /// Integration tests for tweets operations with HTTP mocking
+use mockito::Server;
 use xcom_rs::test_utils::helpers::{
     create_test_db_path, create_test_dir, create_test_ledger_with_db,
 };
+use xcom_rs::tweets::http_client::XApiClient;
 use xcom_rs::tweets::{CreateArgs, IfExistsPolicy, TweetCommand};
 
 /// Test simulating a timeout followed by successful retry
 #[test]
 fn test_timeout_retry_with_ledger() {
+    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
     let temp_dir = create_test_dir("tweets-retry");
     let db_path = create_test_db_path(temp_dir.path());
     let ledger = create_test_ledger_with_db(&db_path);
-    let cmd = TweetCommand::new(ledger);
+
+    let mut server = Server::new();
+    let mock = server
+        .mock("POST", "/2/tweets")
+        .match_header("authorization", "Bearer test_token")
+        .with_status(201)
+        .with_body(r#"{"data":{"id":"1234567890","text":"Hello retry world"}}"#)
+        .expect(1) // Only called once, second request is from cache
+        .create();
+
+    std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+
+    let http_client = XApiClient::with_base_url(server.url());
+    let cmd = TweetCommand::with_http_client(ledger, http_client);
 
     let client_request_id = "retry-test-123";
 
@@ -39,15 +58,35 @@ fn test_timeout_retry_with_ledger() {
     assert_eq!(result2.tweet.id, tweet_id1); // Should return same tweet
     assert_eq!(result2.meta.from_cache, Some(true)); // Indicates cached result
     assert_eq!(result2.meta.client_request_id, client_request_id);
+
+    mock.assert();
+    std::env::remove_var("XCOM_RS_BEARER_TOKEN");
 }
 
 /// Test that same client_request_id returns cached result regardless of content
 #[test]
 fn test_different_content_same_client_request_id() {
+    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
     let temp_dir = create_test_dir("tweets-different-content");
     let db_path = create_test_db_path(temp_dir.path());
     let ledger = create_test_ledger_with_db(&db_path);
-    let cmd = TweetCommand::new(ledger);
+
+    let mut server = Server::new();
+    let mock = server
+        .mock("POST", "/2/tweets")
+        .match_header("authorization", "Bearer test_token")
+        .with_status(201)
+        .with_body(r#"{"data":{"id":"1234567891","text":"First message"}}"#)
+        .expect(1) // Only called once because second request should be cached
+        .create();
+
+    std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+
+    let http_client = XApiClient::with_base_url(server.url());
+    let cmd = TweetCommand::with_http_client(ledger, http_client);
 
     let client_request_id = "test-456";
 
@@ -73,15 +112,35 @@ fn test_different_content_same_client_request_id() {
     // Should return same tweet_id from cache
     assert_eq!(tweet_id1, tweet_id2);
     assert_eq!(result2.meta.from_cache, Some(true));
+
+    mock.assert();
+    std::env::remove_var("XCOM_RS_BEARER_TOKEN");
 }
 
 /// Test error policy when duplicate detected
 #[test]
 fn test_if_exists_error_policy() {
+    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
     let temp_dir = create_test_dir("tweets-error-policy");
     let db_path = create_test_db_path(temp_dir.path());
     let ledger = create_test_ledger_with_db(&db_path);
-    let cmd = TweetCommand::new(ledger);
+
+    let mut server = Server::new();
+    let mock = server
+        .mock("POST", "/2/tweets")
+        .match_header("authorization", "Bearer test_token")
+        .with_status(201)
+        .with_body(r#"{"data":{"id":"1234567892","text":"Test message"}}"#)
+        .expect(1) // Only called once because second request should error from cache
+        .create();
+
+    std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+
+    let http_client = XApiClient::with_base_url(server.url());
+    let cmd = TweetCommand::with_http_client(ledger, http_client);
 
     let client_request_id = "error-test-789";
 
@@ -102,6 +161,9 @@ fn test_if_exists_error_policy() {
     let result = cmd.create(args2);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("already exists"));
+
+    mock.assert();
+    std::env::remove_var("XCOM_RS_BEARER_TOKEN");
 }
 
 /// Test NDJSON output format for list

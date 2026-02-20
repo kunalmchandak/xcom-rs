@@ -1,11 +1,14 @@
 use crate::{
     cli::MediaCommands,
-    media::{MediaCommand, StubMediaClient, UploadArgs},
+    media::{MediaCommand, UploadArgs, XMediaClient},
     output::{print_envelope, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
 };
 use anyhow::Result;
 use std::collections::HashMap;
+
+#[cfg(test)]
+use crate::media::StubMediaClient;
 
 pub fn handle_media(
     command: MediaCommands,
@@ -24,7 +27,7 @@ fn handle_upload(
 ) -> Result<()> {
     tracing::info!(path = %path, "Uploading media");
 
-    let client = StubMediaClient;
+    let client = XMediaClient::new();
     let cmd = MediaCommand::new(client);
     let args = UploadArgs { path: path.clone() };
 

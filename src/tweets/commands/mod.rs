@@ -54,6 +54,15 @@ impl TweetCommand {
         }
     }
 
+    /// Create a new tweet command handler with a custom HTTP client (for testing)
+    pub fn with_http_client(ledger: IdempotencyLedger, http_client: XApiClient) -> Self {
+        Self {
+            ledger,
+            api_client: Box::new(crate::tweets::client::MockTweetApiClient::new()),
+            http_client,
+        }
+    }
+
     /// Create a tweet with idempotency support
     pub fn create(&self, args: CreateArgs) -> Result<CreateResult> {
         create::create(&self.ledger, &self.http_client, args)

@@ -52,6 +52,11 @@ impl XMediaClient {
         }
     }
 
+    /// Create a client with a custom base URL (for testing)
+    pub fn with_base_url(base_url: String) -> Self {
+        Self { base_url }
+    }
+
     /// Get bearer token from environment
     fn get_bearer_token(&self) -> Result<String> {
         std::env::var("XCOM_RS_BEARER_TOKEN")
