@@ -1,8 +1,10 @@
 //! X API client interface and mock implementation for tweet operations.
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 use super::models::{ConversationEdge, ConversationResult, ReferencedTweet, Tweet};
+use crate::x_api::XApiClient;
 
 /// Trait representing the X API client interface for tweet operations.
 /// This allows mocking in tests without real API calls.
@@ -17,6 +19,99 @@ pub trait TweetApiClient: Send + Sync {
     /// Search recent tweets matching a query.
     /// Returns a list of matching tweets.
     fn search_recent(&self, query: &str, limit: usize) -> Result<Vec<Tweet>>;
+}
+
+/// HTTP implementation of TweetApiClient using XApiClient for real API calls.
+pub struct HttpTweetApiClient<T: XApiClient> {
+    client: T,
+}
+
+impl<T: XApiClient> HttpTweetApiClient<T> {
+    /// Create a new HTTP tweet API client with the given XApiClient
+    pub fn new(client: T) -> Self {
+        Self { client }
+    }
+}
+
+/// Request body for creating a tweet
+#[derive(Debug, Serialize)]
+struct CreateTweetRequest {
+    text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply: Option<ReplySettings>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReplySettings {
+    in_reply_to_tweet_id: String,
+}
+
+/// Response from creating a tweet
+#[derive(Debug, Deserialize)]
+struct CreateTweetResponse {
+    data: Tweet,
+}
+
+/// Response from getting a single tweet
+#[derive(Debug, Deserialize)]
+struct GetTweetResponse {
+    data: Tweet,
+}
+
+/// Response from searching tweets
+#[derive(Debug, Deserialize)]
+struct SearchTweetsResponse {
+    data: Vec<Tweet>,
+}
+
+impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
+    fn post_tweet(&self, text: &str, reply_to: Option<&str>) -> Result<Tweet> {
+        let request = CreateTweetRequest {
+            text: text.to_string(),
+            reply: reply_to.map(|id| ReplySettings {
+                in_reply_to_tweet_id: id.to_string(),
+            }),
+        };
+
+        let response: Result<CreateTweetResponse, _> = self.client.post("/2/tweets", &request);
+        match response {
+            Ok(resp) => Ok(resp.data),
+            Err(error_details) => Err(anyhow::anyhow!(
+                "{:?}: {}",
+                error_details.code,
+                error_details.message
+            )),
+        }
+    }
+
+    fn get_tweet(&self, tweet_id: &str) -> Result<Tweet> {
+        let path = format!("/2/tweets/{}", tweet_id);
+        let response: Result<GetTweetResponse, _> = self.client.get(&path);
+        match response {
+            Ok(resp) => Ok(resp.data),
+            Err(error_details) => Err(anyhow::anyhow!(
+                "{:?}: {}",
+                error_details.code,
+                error_details.message
+            )),
+        }
+    }
+
+    fn search_recent(&self, query: &str, limit: usize) -> Result<Vec<Tweet>> {
+        let path = format!(
+            "/2/tweets/search/recent?query={}&max_results={}",
+            query, limit
+        );
+        let response: Result<SearchTweetsResponse, _> = self.client.get(&path);
+        match response {
+            Ok(resp) => Ok(resp.data),
+            Err(error_details) => Err(anyhow::anyhow!(
+                "{:?}: {}",
+                error_details.code,
+                error_details.message
+            )),
+        }
+    }
 }
 
 /// Mock implementation of TweetApiClient for testing.

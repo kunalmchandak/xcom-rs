@@ -38,7 +38,7 @@ sha2 = "0.10"
 hex = "0.4"
 dirs = "5.0"
 tempfile = "3.10"
-ureq = "2.10"
+ureq = { version = "2.10", features = ["json"] }
 
 [dev-dependencies]
 mockito = "1.5"
