@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 
 use super::models::UploadResult;
+use crate::tweets::commands::types::ClassifiedError;
 
 /// Trait for uploading media to the X API.
 /// This abstraction allows mocking in tests.
@@ -35,6 +36,93 @@ impl MediaClient for StubMediaClient {
         // Return a deterministic fake media ID
         let media_id = format!("media_{}", uuid::Uuid::new_v4().as_simple());
         Ok(media_id)
+    }
+}
+
+/// Real X API media client
+pub struct XMediaClient {
+    base_url: String,
+}
+
+impl XMediaClient {
+    /// Create a new X API media client
+    pub fn new() -> Self {
+        Self {
+            base_url: "https://upload.x.com".to_string(),
+        }
+    }
+
+    /// Get bearer token from environment
+    fn get_bearer_token(&self) -> Result<String> {
+        std::env::var("XCOM_RS_BEARER_TOKEN")
+            .context("XCOM_RS_BEARER_TOKEN not set")?
+            .strip_prefix("Bearer ")
+            .map(String::from)
+            .or_else(|| std::env::var("XCOM_RS_BEARER_TOKEN").ok())
+            .context("Failed to parse bearer token")
+    }
+}
+
+impl Default for XMediaClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MediaClient for XMediaClient {
+    fn upload_bytes(&self, data: &[u8], mime_type: &str) -> Result<String> {
+        let token = self.get_bearer_token()?;
+        let url = format!("{}/2/media/upload", self.base_url);
+
+        // Create multipart form data manually
+        let boundary = format!("----boundary{}", uuid::Uuid::new_v4().as_simple());
+        let mut body = Vec::new();
+
+        // Add media data part
+        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+        body.extend_from_slice(
+            b"Content-Disposition: form-data; name=\"media\"; filename=\"file\"\r\n",
+        );
+        body.extend_from_slice(format!("Content-Type: {}\r\n\r\n", mime_type).as_bytes());
+        body.extend_from_slice(data);
+        body.extend_from_slice(b"\r\n");
+        body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+
+        let content_type = format!("multipart/form-data; boundary={}", boundary);
+
+        let response = ureq::post(&url)
+            .set("Authorization", &format!("Bearer {}", token))
+            .set("Content-Type", &content_type)
+            .send_bytes(&body);
+
+        match response {
+            Ok(resp) => {
+                let body = resp
+                    .into_string()
+                    .context("Failed to read media upload response body")?;
+
+                // Parse the response to get media_id
+                let response_json: serde_json::Value =
+                    serde_json::from_str(&body).context("Failed to parse media upload response")?;
+
+                let media_id = response_json["data"]["media_id"]
+                    .as_str()
+                    .or_else(|| response_json["media_id_string"].as_str())
+                    .context("Failed to extract media_id from response")?
+                    .to_string();
+
+                Ok(media_id)
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let error_body = resp
+                    .into_string()
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                Err(ClassifiedError::from_status_code(code, error_body).into())
+            }
+            Err(ureq::Error::Transport(transport)) => {
+                Err(ClassifiedError::timeout(format!("Network error: {}", transport)).into())
+            }
+        }
     }
 }
 
