@@ -4,12 +4,13 @@
 TBD - created by archiving change plan-idempotent-tweet-operations. Update Purpose after archive.
 ## Requirements
 ### Requirement: 投稿作成の冪等実行
-`xcom-rs` は `tweets create` で `--client-request-id` を受け付け、同一IDの再実行に対して冪等に振る舞わなければならない（MUST）。
+`xcom-rs` は `tweets create` の実行時、スタブではなくX APIへリクエストを送信し、成功時のtweet IDを冪等結果として保存しなければならない（MUST）。
 
-#### Scenario: 同一ID再実行で重複投稿を防止
-- **Given** 利用者が `tweets create --client-request-id req-1 --text "hello"` を実行し成功した
-- **When** 同じ `client-request-id` と同じペイロードで再実行する
-- **Then** CLIは新規投稿を作らず、既存の `tweetId` を返す
+#### Scenario: 実API呼び出しの結果保存
+- **Given** 利用者が `tweets create --text "hello"` を実行する
+- **When** X APIが作成済みtweet IDを返す
+- **Then** CLIはそのIDをレスポンスに含める
+- **And** 同一 `client-request-id` 再実行時は保存済みIDを返す
 
 ### Requirement: 既存時の挙動選択
 `xcom-rs` は同一ID既存時の動作を `--if-exists return|error` で指定できなければならない（MUST）。
