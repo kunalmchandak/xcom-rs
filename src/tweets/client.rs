@@ -37,6 +37,7 @@ struct ApiReferencedTweet {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ApiMetaWithPagination {
     result_count: Option<usize>,
     next_token: Option<String>,

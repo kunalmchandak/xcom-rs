@@ -18,3 +18,9 @@
 
 - [x] 4.1 検索/タイムラインのHTTPモックテストを追加する（検証: `cargo test search:: timeline::` が成功する）
 - [x] 4.2 `tweets list/show/conversation` のHTTPモックテストを追加する（検証: `cargo test tweets::commands::show` が成功する）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `tweets list/show/conversation` の実行経路が実APIを使うように修正する（証拠: `src/tweets/commands/mod.rs` の `TweetCommand::new` が `HttpTweetApiClient::from_env()` を呼び出すように変更）
+- [x] テスト用モック実装を本番コード経路から分離する（証拠: `src/search/mod.rs`, `src/timeline/mod.rs`, `src/tweets/mod.rs` で `MockClient` を `#[cfg(test)]` 配下に移動）
+- [x] 追跡されているバックアップコードを削除してデッドコードを解消する（証拠: `.bak`, `.bak2`, `.bak3` ファイルを削除）

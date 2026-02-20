@@ -55,6 +55,7 @@ struct ApiTweet {
 
 /// X API v2 metadata
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ApiMeta {
     result_count: Option<usize>,
     next_token: Option<String>,
@@ -83,6 +84,7 @@ struct UserInfo {
 
 /// Resolved user ID for a given handle
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ResolvedUser {
     id: String,
     handle: String,
@@ -225,9 +227,7 @@ impl HttpTimelineClient {
             }
         };
 
-        let user_data = api_response
-            .data
-            .ok_or_else(|| TimelineError::AuthRequired)?;
+        let user_data = api_response.data.ok_or(TimelineError::AuthRequired)?;
 
         Ok(UserInfo {
             id: user_data.id,

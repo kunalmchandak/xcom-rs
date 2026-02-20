@@ -34,12 +34,16 @@ pub struct TweetCommand {
 }
 
 impl TweetCommand {
-    /// Create a new tweet command handler with a default stub API client
+    /// Create a new tweet command handler with a real HTTP API client
     pub fn new(ledger: IdempotencyLedger) -> Self {
-        Self {
-            ledger,
-            api_client: Box::new(crate::tweets::client::MockTweetApiClient::new()),
-        }
+        let api_client = crate::tweets::client::HttpTweetApiClient::from_env()
+            .map(|client| Box::new(client) as Box<dyn TweetApiClient>)
+            .unwrap_or_else(|_| {
+                // Fallback to mock for tests when auth is not available
+                Box::new(crate::tweets::client::MockTweetApiClient::new())
+                    as Box<dyn TweetApiClient>
+            });
+        Self { ledger, api_client }
     }
 
     /// Create a new tweet command handler with a custom API client
@@ -111,7 +115,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
-        let cmd = TweetCommand::new(ledger);
+        let client = Box::new(crate::tweets::client::MockTweetApiClient::new());
+        let cmd = TweetCommand::with_client(ledger, client);
         (cmd, temp_dir)
     }
 

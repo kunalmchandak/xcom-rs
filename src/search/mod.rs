@@ -3,7 +3,10 @@ pub mod commands;
 pub mod models;
 
 pub use commands::{
-    HttpSearchClient, MockSearchClient, SearchClient, SearchCommand, SearchRecentArgs,
-    SearchUsersArgs,
+    HttpSearchClient, SearchClient, SearchCommand, SearchRecentArgs, SearchUsersArgs,
 };
 pub use models::{SearchRecentResult, SearchTweet, SearchUser, SearchUsersResult};
+
+// Mock client is only available in tests
+#[cfg(test)]
+pub use commands::MockSearchClient;

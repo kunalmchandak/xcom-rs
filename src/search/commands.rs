@@ -112,6 +112,7 @@ struct ApiTweet {
 
 /// X API v2 metadata
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ApiMeta {
     result_count: Option<usize>,
     next_token: Option<String>,
