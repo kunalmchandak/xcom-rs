@@ -1,8 +1,8 @@
 class XcomRs < Formula
   desc "Agent-friendly X.com CLI with introspection and machine-readable output"
   homepage "https://github.com/tumf/xcom-rs"
-  url "https://crates.io/api/v1/crates/xcom-rs/0.1.14/download"
-  sha256 "a056ea060339494d5edc2b14b9540f24f144e54430980fe7415ebb2aec91388e"
+  url "https://crates.io/api/v1/crates/xcom-rs/0.1.24/download"
+  sha256 "8946955e09774d3c10cc9c93888488c994f565cd0e359e8801b456b673a41315"
   license "MIT"
 
   depends_on "rust" => :build
