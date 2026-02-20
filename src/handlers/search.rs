@@ -2,7 +2,7 @@ use crate::{
     cli::SearchCommands,
     output::{print_envelope, print_ndjson, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
-    search::{SearchCommand, SearchRecentArgs, SearchUsersArgs},
+    search::{HttpSearchClient, SearchCommand, SearchRecentArgs, SearchUsersArgs},
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -12,7 +12,19 @@ pub fn handle_search(
     create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,
     output_format: OutputFormat,
 ) -> Result<()> {
-    let search_cmd = SearchCommand::new();
+    let search_cmd = match SearchCommand::new() {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            let error = ErrorDetails::new(ErrorCode::AuthRequired, e.to_string());
+            let envelope = if let Some(meta) = create_meta() {
+                Envelope::<()>::error_with_meta("error", error, meta)
+            } else {
+                Envelope::<()>::error("error", error)
+            };
+            let _ = print_envelope(&envelope, output_format);
+            std::process::exit(ExitCode::AuthenticationError.into());
+        }
+    };
 
     match command {
         SearchCommands::Recent {
@@ -29,7 +41,7 @@ pub fn handle_search(
 }
 
 fn handle_search_recent(
-    search_cmd: SearchCommand,
+    search_cmd: SearchCommand<HttpSearchClient>,
     query: String,
     limit: Option<usize>,
     cursor: Option<String>,
@@ -71,7 +83,7 @@ fn handle_search_recent(
 }
 
 fn handle_search_users(
-    search_cmd: SearchCommand,
+    search_cmd: SearchCommand<HttpSearchClient>,
     query: String,
     limit: Option<usize>,
     cursor: Option<String>,

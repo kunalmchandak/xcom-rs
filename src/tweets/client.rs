@@ -1,8 +1,46 @@
 //! X API client interface and mock implementation for tweet operations.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::Deserialize;
 
+use super::commands::types::{ListArgs, ListResult};
 use super::models::{ConversationEdge, ConversationResult, ReferencedTweet, Tweet};
+
+/// X API v2 response structures
+#[derive(Debug, Deserialize)]
+struct ApiTweetResponse {
+    data: Option<ApiTweetData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiTweetsResponse {
+    data: Option<Vec<ApiTweetData>>,
+    meta: Option<ApiMetaWithPagination>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiTweetData {
+    id: String,
+    text: Option<String>,
+    author_id: Option<String>,
+    created_at: Option<String>,
+    conversation_id: Option<String>,
+    in_reply_to_user_id: Option<String>,
+    referenced_tweets: Option<Vec<ApiReferencedTweet>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiReferencedTweet {
+    #[serde(rename = "type")]
+    ref_type: String,
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiMetaWithPagination {
+    result_count: Option<usize>,
+    next_token: Option<String>,
+}
 
 /// Trait representing the X API client interface for tweet operations.
 /// This allows mocking in tests without real API calls.
@@ -17,6 +55,254 @@ pub trait TweetApiClient: Send + Sync {
     /// Search recent tweets matching a query.
     /// Returns a list of matching tweets.
     fn search_recent(&self, query: &str, limit: usize) -> Result<Vec<Tweet>>;
+
+    /// List tweets for the authenticated user with field projection and pagination
+    fn list_tweets(&self, args: &ListArgs) -> Result<ListResult>;
+}
+
+/// HTTP-based implementation of TweetApiClient using X API
+pub struct HttpTweetApiClient {
+    bearer_token: String,
+}
+
+impl HttpTweetApiClient {
+    /// Create a new HTTP tweet API client with the given bearer token
+    pub fn new(bearer_token: String) -> Self {
+        Self { bearer_token }
+    }
+
+    /// Create from environment variable (XCOM_RS_BEARER_TOKEN)
+    pub fn from_env() -> Result<Self> {
+        let auth_store = crate::auth::storage::AuthStore::new();
+        let status = auth_store.status();
+        if !status.authenticated {
+            anyhow::bail!(
+                "Authentication required. Set XCOM_RS_BEARER_TOKEN environment variable."
+            );
+        }
+        let bearer_token =
+            std::env::var("XCOM_RS_BEARER_TOKEN").context("XCOM_RS_BEARER_TOKEN not set")?;
+        Ok(Self::new(bearer_token))
+    }
+
+    /// Resolve authenticated user ID
+    fn resolve_me(&self) -> Result<String> {
+        // Allow test override
+        if let Ok(user_id) = std::env::var("XCOM_TEST_USER_ID") {
+            return Ok(user_id);
+        }
+
+        // Call X API to get authenticated user
+        let url = "https://api.twitter.com/2/users/me";
+
+        let response = ureq::get(url)
+            .set("Authorization", &format!("Bearer {}", self.bearer_token))
+            .call();
+
+        let api_response: serde_json::Value = match response {
+            Ok(resp) => resp
+                .into_json()
+                .context("Failed to parse user/me response")?,
+            Err(ureq::Error::Status(code, _)) if code == 401 || code == 403 => {
+                anyhow::bail!("Authentication required");
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                anyhow::bail!("X API error {}: {}", code, body);
+            }
+            Err(e) => {
+                anyhow::bail!("Failed to get user/me: {}", e);
+            }
+        };
+
+        let user_id = api_response["data"]["id"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Failed to extract user ID from response"))?
+            .to_string();
+
+        Ok(user_id)
+    }
+
+    /// Convert API tweet data to Tweet model
+    fn api_tweet_to_tweet(api_tweet: ApiTweetData) -> Tweet {
+        let mut tweet = Tweet::new(api_tweet.id);
+        tweet.text = api_tweet.text;
+        tweet.author_id = api_tweet.author_id;
+        tweet.created_at = api_tweet.created_at;
+        tweet.conversation_id = api_tweet.conversation_id;
+        tweet.in_reply_to_user_id = api_tweet.in_reply_to_user_id;
+        tweet.referenced_tweets = api_tweet.referenced_tweets.map(|refs| {
+            refs.into_iter()
+                .map(|r| ReferencedTweet {
+                    ref_type: r.ref_type,
+                    id: r.id,
+                })
+                .collect()
+        });
+        tweet
+    }
+}
+
+impl TweetApiClient for HttpTweetApiClient {
+    fn post_tweet(&self, text: &str, reply_to: Option<&str>) -> Result<Tweet> {
+        let url = "https://api.twitter.com/2/tweets";
+        let mut body = serde_json::json!({
+            "text": text,
+        });
+
+        if let Some(reply_id) = reply_to {
+            body["reply"] = serde_json::json!({
+                "in_reply_to_tweet_id": reply_id,
+            });
+        }
+
+        let response = ureq::post(url)
+            .set("Authorization", &format!("Bearer {}", self.bearer_token))
+            .set("Content-Type", "application/json")
+            .send_json(&body);
+
+        let api_response: ApiTweetResponse = match response {
+            Ok(resp) => resp.into_json().context("Failed to parse tweet response")?,
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                anyhow::bail!("X API error {}: {}", code, body);
+            }
+            Err(e) => anyhow::bail!("Failed to post tweet: {}", e),
+        };
+
+        let api_tweet = api_response
+            .data
+            .ok_or_else(|| anyhow::anyhow!("No data in tweet response"))?;
+
+        Ok(Self::api_tweet_to_tweet(api_tweet))
+    }
+
+    fn get_tweet(&self, tweet_id: &str) -> Result<Tweet> {
+        let url = format!(
+            "https://api.twitter.com/2/tweets/{}?tweet.fields=id,text,author_id,created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
+            tweet_id
+        );
+
+        let response = ureq::get(&url)
+            .set("Authorization", &format!("Bearer {}", self.bearer_token))
+            .call();
+
+        let api_response: ApiTweetResponse = match response {
+            Ok(resp) => resp.into_json().context("Failed to parse tweet response")?,
+            Err(ureq::Error::Status(404, _)) => {
+                anyhow::bail!("Tweet not found: {}", tweet_id);
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                anyhow::bail!("X API error {}: {}", code, body);
+            }
+            Err(e) => anyhow::bail!("Failed to get tweet: {}", e),
+        };
+
+        let api_tweet = api_response
+            .data
+            .ok_or_else(|| anyhow::anyhow!("No data in tweet response"))?;
+
+        Ok(Self::api_tweet_to_tweet(api_tweet))
+    }
+
+    fn search_recent(&self, query: &str, limit: usize) -> Result<Vec<Tweet>> {
+        let url = format!(
+            "https://api.twitter.com/2/tweets/search/recent?query={}&max_results={}&tweet.fields=id,text,author_id,created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
+            urlencoding::encode(query),
+            limit
+        );
+
+        let response = ureq::get(&url)
+            .set("Authorization", &format!("Bearer {}", self.bearer_token))
+            .call();
+
+        let api_response: ApiTweetsResponse = match response {
+            Ok(resp) => resp
+                .into_json()
+                .context("Failed to parse search response")?,
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                anyhow::bail!("X API error {}: {}", code, body);
+            }
+            Err(e) => anyhow::bail!("Failed to search tweets: {}", e),
+        };
+
+        let tweets = api_response
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .map(Self::api_tweet_to_tweet)
+            .collect();
+
+        Ok(tweets)
+    }
+
+    fn list_tweets(&self, args: &ListArgs) -> Result<ListResult> {
+        use super::commands::types::{ListResultMeta, PaginationMeta};
+
+        let user_id = self.resolve_me()?;
+
+        // Build field list from requested fields
+        let field_strings: Vec<String> =
+            args.fields.iter().map(|f| f.as_str().to_string()).collect();
+        let fields_param = field_strings.join(",");
+
+        let mut url = format!(
+            "https://api.twitter.com/2/users/{}/tweets?max_results={}",
+            user_id,
+            args.limit.unwrap_or(10)
+        );
+        url.push_str(&format!(
+            "&tweet.fields={}",
+            urlencoding::encode(&fields_param)
+        ));
+
+        if let Some(cursor) = &args.cursor {
+            url.push_str(&format!(
+                "&pagination_token={}",
+                urlencoding::encode(cursor)
+            ));
+        }
+
+        let response = ureq::get(&url)
+            .set("Authorization", &format!("Bearer {}", self.bearer_token))
+            .call();
+
+        let api_response: ApiTweetsResponse = match response {
+            Ok(resp) => resp.into_json().context("Failed to parse list response")?,
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                anyhow::bail!("X API error {}: {}", code, body);
+            }
+            Err(e) => anyhow::bail!("Failed to list tweets: {}", e),
+        };
+
+        let tweets: Vec<Tweet> = api_response
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .map(Self::api_tweet_to_tweet)
+            .collect();
+
+        // Apply field projection
+        let projected_tweets = tweets
+            .into_iter()
+            .map(|t| t.project(&args.fields))
+            .collect();
+
+        let meta = api_response.meta.map(|api_meta| ListResultMeta {
+            pagination: PaginationMeta {
+                next_cursor: api_meta.next_token,
+                prev_cursor: None,
+            },
+        });
+
+        Ok(ListResult {
+            tweets: projected_tweets,
+            meta,
+        })
+    }
 }
 
 /// Mock implementation of TweetApiClient for testing.
@@ -129,6 +415,57 @@ impl TweetApiClient for MockTweetApiClient {
             return Err(anyhow::anyhow!("Simulated API error"));
         }
         Ok(self.search_results.iter().take(limit).cloned().collect())
+    }
+
+    fn list_tweets(&self, args: &ListArgs) -> Result<ListResult> {
+        use super::commands::types::{ListResultMeta, PaginationMeta};
+
+        if self.simulate_error {
+            return Err(anyhow::anyhow!("Simulated API error"));
+        }
+
+        let limit = args.limit.unwrap_or(10);
+        let offset = if let Some(cursor) = &args.cursor {
+            cursor
+                .strip_prefix("cursor_")
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        let mut tweets = Vec::new();
+        for i in offset..(offset + limit) {
+            let mut tweet = Tweet::new(format!("tweet_{}", i));
+            tweet.text = Some(format!("Tweet text {}", i));
+            tweet.author_id = Some(format!("user_{}", i));
+            tweet.created_at = Some("2024-01-01T00:00:00Z".to_string());
+
+            // Apply field projection
+            let projected = tweet.project(&args.fields);
+            tweets.push(projected);
+        }
+
+        let next_cursor = if tweets.len() == limit {
+            Some(format!("cursor_{}", offset + limit))
+        } else {
+            None
+        };
+
+        let prev_cursor = if offset > 0 {
+            Some(format!("cursor_{}", offset.saturating_sub(limit)))
+        } else {
+            None
+        };
+
+        let meta = Some(ListResultMeta {
+            pagination: PaginationMeta {
+                next_cursor,
+                prev_cursor,
+            },
+        });
+
+        Ok(ListResult { tweets, meta })
     }
 }
 

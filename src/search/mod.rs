@@ -3,6 +3,7 @@ pub mod commands;
 pub mod models;
 
 pub use commands::{
-    MockSearchClient, SearchClient, SearchCommand, SearchRecentArgs, SearchUsersArgs,
+    HttpSearchClient, MockSearchClient, SearchClient, SearchCommand, SearchRecentArgs,
+    SearchUsersArgs,
 };
 pub use models::{SearchRecentResult, SearchTweet, SearchUser, SearchUsersResult};

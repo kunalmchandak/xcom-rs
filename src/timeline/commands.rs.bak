@@ -397,6 +397,56 @@ impl<C: TimelineClient> TimelineCommand<C> {
         Self { client }
     }
 
+    /// Resolve a user by handle to get their user ID.
+    /// In production this would call GET /2/users/by/username/{handle}.
+    /// For testing, the resolved user ID can be overridden via XCOM_TEST_RESOLVE_USER_{HANDLE}_ID
+    /// environment variable. If not set, a deterministic stub ID is generated.
+    fn resolve_user_by_handle(&self, handle: &str) -> Result<ResolvedUser, TimelineError> {
+        // Allow test overrides via environment variable for specific handles
+        let env_key = format!("XCOM_TEST_RESOLVE_USER_{}_ID", handle.to_uppercase());
+        let user_id = if let Ok(id) = std::env::var(&env_key) {
+            id
+        } else {
+            // Generate a deterministic stub ID for the handle (production would fetch from API)
+            format!("user_id_for_{}", handle.to_lowercase())
+        };
+
+        tracing::debug!(handle = %handle, user_id = %user_id, "Resolved user handle to ID");
+
+        Ok(ResolvedUser {
+            id: user_id,
+            handle: handle.to_string(),
+        })
+    }
+
+    /// Resolve the authenticated user's ID.
+    /// In a real implementation this would call GET /2/users/me.
+    /// For now, we simulate it via an environment variable or use a stub.
+    fn resolve_me(&self) -> Result<UserInfo, TimelineError> {
+        // Allow overriding via environment for testing
+        if let Ok(user_id) = std::env::var("XCOM_TEST_USER_ID") {
+            let handle =
+                std::env::var("XCOM_TEST_USER_HANDLE").unwrap_or_else(|_| "testuser".to_string());
+            return Ok(UserInfo {
+                id: user_id,
+                handle,
+            });
+        }
+
+        // In production this would call the X API; here we simulate a default authenticated user
+        // Returning AuthRequired when no credentials are present
+        // Check for XCOM_RS_BEARER_TOKEN using AuthStore
+        let auth_store = crate::auth::storage::AuthStore::new();
+        if !auth_store.is_authenticated() {
+            return Err(TimelineError::AuthRequired);
+        }
+
+        Ok(UserInfo {
+            id: "me_user_id".to_string(),
+            handle: "me".to_string(),
+        })
+    }
+
     /// Retrieve a timeline based on the given arguments.
     pub fn get(&self, args: TimelineArgs) -> Result<TimelineResult, TimelineError> {
         self.client.get(&args)
@@ -576,8 +626,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::Mentions,
             limit: 3,
@@ -598,8 +647,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::User {
                 handle: "johndoe".to_string(),
@@ -622,8 +670,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 5,
@@ -645,8 +692,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 10,
@@ -672,8 +718,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
-        let client = MockTimelineClient::with_auth_failure();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 10,
@@ -697,8 +742,7 @@ mod tests {
         std::env::set_var("XCOM_SIMULATE_ERROR", "rate_limit");
         std::env::set_var("XCOM_RETRY_AFTER_MS", "5000");
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 10,
@@ -725,8 +769,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::Mentions,
             limit: 5,
@@ -754,8 +797,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         // Verify handle resolution: tweets should use the resolved handle
         let args = TimelineArgs {
             kind: TimelineKind::User {
@@ -790,8 +832,7 @@ mod tests {
             "overridden_user_id_123",
         );
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::User {
                 handle: "testhandle".to_string(),
@@ -814,8 +855,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
+        let cmd = TimelineCommand::new();
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 10,

@@ -77,7 +77,7 @@ impl TweetCommand {
 
     /// List tweets with field projection and pagination
     pub fn list(&self, args: ListArgs) -> Result<ListResult> {
-        list::list_with_client(self.api_client.as_ref(), args)
+        list::list(args)
     }
 
     /// Reply to a tweet with idempotency support
