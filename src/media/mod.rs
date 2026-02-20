@@ -6,5 +6,5 @@
 pub mod commands;
 pub mod models;
 
-pub use commands::{MediaCommand, StubMediaClient, UploadArgs};
+pub use commands::{MediaCommand, StubMediaClient, UploadArgs, XMediaClient};
 pub use models::UploadResult;

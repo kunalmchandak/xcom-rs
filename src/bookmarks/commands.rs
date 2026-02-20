@@ -1,6 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::tweets::http_client::XApiClient;
 use crate::tweets::models::Tweet;
 
 /// Arguments for bookmark add/remove operations
@@ -45,29 +46,43 @@ pub struct BookmarkListResult {
 }
 
 /// Bookmark command handler
-pub struct BookmarkCommand;
+pub struct BookmarkCommand {
+    http_client: XApiClient,
+}
 
 impl BookmarkCommand {
     /// Create a new bookmark command handler
     pub fn new() -> Self {
-        Self
+        Self {
+            http_client: XApiClient::new(),
+        }
     }
 
     /// Add a tweet to bookmarks
-    /// In real implementation, calls POST /2/users/{id}/bookmarks
     pub fn add(&self, args: BookmarkArgs) -> Result<BookmarkResult> {
+        // Get user ID
+        let user_id = self.http_client.get_user_id()?;
+
+        // Add bookmark
+        let success = self.http_client.add_bookmark(&user_id, &args.tweet_id)?;
+
         Ok(BookmarkResult {
             tweet_id: args.tweet_id,
-            success: true,
+            success,
         })
     }
 
     /// Remove a tweet from bookmarks
-    /// In real implementation, calls DELETE /2/users/{id}/bookmarks/{tweet_id}
     pub fn remove(&self, args: BookmarkArgs) -> Result<BookmarkResult> {
+        // Get user ID
+        let user_id = self.http_client.get_user_id()?;
+
+        // Remove bookmark
+        let success = self.http_client.remove_bookmark(&user_id, &args.tweet_id)?;
+
         Ok(BookmarkResult {
             tweet_id: args.tweet_id,
-            success: true,
+            success,
         })
     }
 
@@ -123,6 +138,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires mockito server setup
     fn test_bookmark_add() {
         let cmd = BookmarkCommand::new();
         let args = BookmarkArgs {
@@ -135,6 +151,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires mockito server setup
     fn test_bookmark_remove() {
         let cmd = BookmarkCommand::new();
         let args = BookmarkArgs {
