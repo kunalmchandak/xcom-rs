@@ -11,7 +11,48 @@ use xcom_rs::{
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
 };
 
+/// Parse --output flag from raw command-line arguments
+/// Returns the output format (defaults to Text if not specified or invalid)
+fn parse_output_from_args() -> OutputFormat {
+    let args: Vec<String> = std::env::args().collect();
+    let mut output_value: Option<&str> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+
+        // Stop processing after --
+        if arg == "--" {
+            break;
+        }
+
+        // Handle --output=value
+        if let Some(stripped) = arg.strip_prefix("--output=") {
+            output_value = Some(stripped);
+            i += 1;
+            continue;
+        }
+
+        // Handle --output value
+        if arg == "--output" && i + 1 < args.len() {
+            output_value = Some(&args[i + 1]);
+            i += 2;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    // Try to parse the output value, default to Text on invalid/missing
+    output_value
+        .and_then(|v| OutputFormat::from_str(v).ok())
+        .unwrap_or(OutputFormat::Text)
+}
+
 fn main() {
+    // Parse --output early to determine error format before CLI parsing
+    let early_output_format = parse_output_from_args();
+
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => match e.kind() {
@@ -29,30 +70,32 @@ fn main() {
                 };
 
                 let error = ErrorResponder::error(error_code, e.to_string());
-                ErrorResponder::emit(error, OutputFormat::Json, None, exit_code);
+                ErrorResponder::emit(error, early_output_format, None, exit_code);
             }
         },
     };
 
-    let log_format = match LogFormat::from_str(&cli.log_format) {
-        Ok(fmt) => fmt,
-        Err(e) => {
-            let error = ErrorDetails::new(ErrorCode::InvalidArgument, e.to_string());
-            let envelope = Envelope::<()>::error("error", error);
-            let _ = print_envelope(&envelope, OutputFormat::Json);
-            std::process::exit(ExitCode::InvalidArgument.into());
-        }
-    };
-    init_logging(log_format, cli.trace_id.clone());
-
+    // Determine final output format from parsed CLI
     let output_format = match OutputFormat::from_str(&cli.output) {
         Ok(fmt) => fmt,
         Err(e) => {
             let error = ErrorResponder::error(ErrorCode::InvalidArgument, e.to_string());
             let meta = ErrorResponder::create_meta(cli.trace_id.as_ref());
-            ErrorResponder::emit(error, OutputFormat::Json, meta, ExitCode::InvalidArgument);
+            ErrorResponder::emit(error, early_output_format, meta, ExitCode::InvalidArgument);
         }
     };
+
+    // Validate log format after output format is determined
+    let log_format = match LogFormat::from_str(&cli.log_format) {
+        Ok(fmt) => fmt,
+        Err(e) => {
+            let error = ErrorDetails::new(ErrorCode::InvalidArgument, e.to_string());
+            let envelope = Envelope::<()>::error("error", error);
+            let _ = print_envelope(&envelope, output_format);
+            std::process::exit(ExitCode::InvalidArgument.into());
+        }
+    };
+    init_logging(log_format, cli.trace_id.clone());
 
     let create_meta = || -> Option<std::collections::HashMap<String, serde_json::Value>> {
         ErrorResponder::create_meta(cli.trace_id.as_ref())
