@@ -1,4 +1,5 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::Deserialize;
 
 use super::models::{TimelineArgs, TimelineKind, TimelineMeta, TimelinePagination, TimelineResult};
 use crate::tweets::Tweet;
@@ -36,6 +37,43 @@ impl TimelineError {
     }
 }
 
+/// X API v2 response for timeline endpoints
+#[derive(Debug, Deserialize)]
+struct ApiTimelineResponse {
+    data: Option<Vec<ApiTweet>>,
+    meta: Option<ApiMeta>,
+}
+
+/// X API v2 tweet data
+#[derive(Debug, Deserialize)]
+struct ApiTweet {
+    id: String,
+    text: Option<String>,
+    author_id: Option<String>,
+    created_at: Option<String>,
+}
+
+/// X API v2 metadata
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct ApiMeta {
+    result_count: Option<usize>,
+    next_token: Option<String>,
+    previous_token: Option<String>,
+}
+
+/// X API v2 user lookup response
+#[derive(Debug, Deserialize)]
+struct ApiUserLookupResponse {
+    data: Option<ApiUserData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiUserData {
+    id: String,
+    username: String,
+}
+
 /// Simulated user info representing an authenticated user
 struct UserInfo {
     #[allow(dead_code)]
@@ -46,47 +84,104 @@ struct UserInfo {
 
 /// Resolved user ID for a given handle
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ResolvedUser {
     id: String,
     handle: String,
 }
 
-/// Main timeline command handler
-pub struct TimelineCommand;
+/// Trait for timeline operations (enables testing via mocking)
+pub trait TimelineClient {
+    /// Get timeline based on arguments
+    fn get(&self, args: &TimelineArgs) -> Result<TimelineResult, TimelineError>;
+}
 
-impl TimelineCommand {
-    /// Create a new timeline command handler
-    pub fn new() -> Self {
-        Self
+/// HTTP-based implementation of TimelineClient using X API
+pub struct HttpTimelineClient {
+    bearer_token: String,
+}
+
+impl HttpTimelineClient {
+    /// Create a new HTTP timeline client with the given bearer token
+    pub fn new(bearer_token: String) -> Self {
+        Self { bearer_token }
     }
 
-    /// Resolve a user by handle to get their user ID.
-    /// In production this would call GET /2/users/by/username/{handle}.
-    /// For testing, the resolved user ID can be overridden via XCOM_TEST_RESOLVE_USER_{HANDLE}_ID
-    /// environment variable. If not set, a deterministic stub ID is generated.
+    /// Create from environment variable (XCOM_RS_BEARER_TOKEN)
+    pub fn from_env() -> Result<Self, TimelineError> {
+        let auth_store = crate::auth::storage::AuthStore::new();
+        let status = auth_store.status();
+        if !status.authenticated {
+            return Err(TimelineError::AuthRequired);
+        }
+        let bearer_token =
+            std::env::var("XCOM_RS_BEARER_TOKEN").map_err(|_| TimelineError::AuthRequired)?;
+        Ok(Self::new(bearer_token))
+    }
+
+    /// Resolve user by handle to get their user ID
     fn resolve_user_by_handle(&self, handle: &str) -> Result<ResolvedUser, TimelineError> {
-        // Allow test overrides via environment variable for specific handles
+        // Allow test overrides via environment variable
         let env_key = format!("XCOM_TEST_RESOLVE_USER_{}_ID", handle.to_uppercase());
-        let user_id = if let Ok(id) = std::env::var(&env_key) {
-            id
-        } else {
-            // Generate a deterministic stub ID for the handle (production would fetch from API)
-            format!("user_id_for_{}", handle.to_lowercase())
+        if let Ok(id) = std::env::var(&env_key) {
+            return Ok(ResolvedUser {
+                id,
+                handle: handle.to_string(),
+            });
+        }
+
+        // Call X API to resolve handle
+        let url = format!(
+            "https://api.twitter.com/2/users/by/username/{}",
+            urlencoding::encode(handle)
+        );
+
+        let response = ureq::get(&url)
+            .set("Authorization", &format!("Bearer {}", self.bearer_token))
+            .call();
+
+        let api_response: ApiUserLookupResponse = match response {
+            Ok(resp) => resp
+                .into_json()
+                .context("Failed to parse user lookup response")
+                .map_err(|e| {
+                    TimelineError::ApiError(crate::tweets::ClassifiedError::from_status_code(
+                        500,
+                        e.to_string(),
+                    ))
+                })?,
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                return Err(TimelineError::ApiError(
+                    crate::tweets::ClassifiedError::from_status_code(code, body),
+                ));
+            }
+            Err(e) => {
+                return Err(TimelineError::ApiError(
+                    crate::tweets::ClassifiedError::from_status_code(
+                        500,
+                        format!("Failed to resolve user: {}", e),
+                    ),
+                ));
+            }
         };
 
-        tracing::debug!(handle = %handle, user_id = %user_id, "Resolved user handle to ID");
+        let user_data = api_response.data.ok_or_else(|| {
+            TimelineError::ApiError(crate::tweets::ClassifiedError::from_status_code(
+                404,
+                format!("User not found: {}", handle),
+            ))
+        })?;
 
         Ok(ResolvedUser {
-            id: user_id,
-            handle: handle.to_string(),
+            id: user_data.id,
+            handle: user_data.username,
         })
     }
 
-    /// Resolve the authenticated user's ID.
-    /// In a real implementation this would call GET /2/users/me.
-    /// For now, we simulate it via an environment variable or use a stub.
+    /// Resolve authenticated user ID
     fn resolve_me(&self) -> Result<UserInfo, TimelineError> {
-        // Allow overriding via environment for testing
+        // Allow test override
         if let Ok(user_id) = std::env::var("XCOM_TEST_USER_ID") {
             let handle =
                 std::env::var("XCOM_TEST_USER_HANDLE").unwrap_or_else(|_| "testuser".to_string());
@@ -96,23 +191,117 @@ impl TimelineCommand {
             });
         }
 
-        // In production this would call the X API; here we simulate a default authenticated user
-        // Returning AuthRequired when no credentials are present
-        // Check for XCOM_RS_BEARER_TOKEN using AuthStore
-        let auth_store = crate::auth::storage::AuthStore::new();
-        if !auth_store.is_authenticated() {
-            return Err(TimelineError::AuthRequired);
-        }
+        // Call X API to get authenticated user
+        let url = "https://api.twitter.com/2/users/me";
+
+        let response = ureq::get(url)
+            .set("Authorization", &format!("Bearer {}", self.bearer_token))
+            .call();
+
+        let api_response: ApiUserLookupResponse = match response {
+            Ok(resp) => resp
+                .into_json()
+                .context("Failed to parse user/me response")
+                .map_err(|e| {
+                    TimelineError::ApiError(crate::tweets::ClassifiedError::from_status_code(
+                        500,
+                        e.to_string(),
+                    ))
+                })?,
+            Err(ureq::Error::Status(code, _)) if code == 401 || code == 403 => {
+                return Err(TimelineError::AuthRequired);
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                return Err(TimelineError::ApiError(
+                    crate::tweets::ClassifiedError::from_status_code(code, body),
+                ));
+            }
+            Err(e) => {
+                return Err(TimelineError::ApiError(
+                    crate::tweets::ClassifiedError::from_status_code(
+                        500,
+                        format!("Failed to get user/me: {}", e),
+                    ),
+                ));
+            }
+        };
+
+        let user_data = api_response.data.ok_or(TimelineError::AuthRequired)?;
 
         Ok(UserInfo {
-            id: "me_user_id".to_string(),
-            handle: "me".to_string(),
+            id: user_data.id,
+            handle: user_data.username,
         })
     }
 
-    /// Retrieve a timeline based on the given arguments.
-    pub fn get(&self, args: TimelineArgs) -> Result<TimelineResult, TimelineError> {
-        // Check for simulated errors via environment variables (for testing)
+    /// Fetch timeline from API endpoint
+    fn fetch_timeline(&self, url: &str) -> Result<TimelineResult, TimelineError> {
+        let response = ureq::get(url)
+            .set("Authorization", &format!("Bearer {}", self.bearer_token))
+            .call();
+
+        let api_response: ApiTimelineResponse = match response {
+            Ok(resp) => resp
+                .into_json()
+                .context("Failed to parse timeline response")
+                .map_err(|e| {
+                    TimelineError::ApiError(crate::tweets::ClassifiedError::from_status_code(
+                        500,
+                        e.to_string(),
+                    ))
+                })?,
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                return Err(TimelineError::ApiError(
+                    crate::tweets::ClassifiedError::from_status_code(code, body),
+                ));
+            }
+            Err(e) => {
+                return Err(TimelineError::ApiError(
+                    crate::tweets::ClassifiedError::from_status_code(
+                        500,
+                        format!("Failed to fetch timeline: {}", e),
+                    ),
+                ));
+            }
+        };
+
+        let tweets = api_response
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| {
+                let mut tweet = Tweet::new(t.id);
+                tweet.text = t.text;
+                tweet.author_id = t.author_id;
+                tweet.created_at = t.created_at;
+                tweet
+            })
+            .collect();
+
+        let meta = if let Some(api_meta) = api_response.meta {
+            if api_meta.next_token.is_some() || api_meta.previous_token.is_some() {
+                Some(TimelineMeta {
+                    pagination: TimelinePagination {
+                        next_token: api_meta.next_token,
+                        previous_token: api_meta.previous_token,
+                    },
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(TimelineResult { tweets, meta })
+    }
+}
+
+impl TimelineClient for HttpTimelineClient {
+    fn get(&self, args: &TimelineArgs) -> Result<TimelineResult, TimelineError> {
+        // Check for simulated errors
         if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
             use crate::tweets::ClassifiedError;
             match error_type.as_str() {
@@ -140,9 +329,97 @@ impl TimelineCommand {
         }
 
         match &args.kind {
-            TimelineKind::Home => self.get_home(&args),
-            TimelineKind::Mentions => self.get_mentions(&args),
-            TimelineKind::User { handle } => self.get_user_tweets(handle.clone(), &args),
+            TimelineKind::Home => {
+                let user = self.resolve_me()?;
+                let mut url = format!(
+                    "https://api.twitter.com/2/users/{}/timelines/reverse_chronological?max_results={}",
+                    user.id, args.limit
+                );
+                url.push_str("&tweet.fields=id,text,author_id,created_at");
+                if let Some(cursor) = &args.cursor {
+                    url.push_str(&format!(
+                        "&pagination_token={}",
+                        urlencoding::encode(cursor)
+                    ));
+                }
+                self.fetch_timeline(&url)
+            }
+            TimelineKind::Mentions => {
+                let user = self.resolve_me()?;
+                let mut url = format!(
+                    "https://api.twitter.com/2/users/{}/mentions?max_results={}",
+                    user.id, args.limit
+                );
+                url.push_str("&tweet.fields=id,text,author_id,created_at");
+                if let Some(cursor) = &args.cursor {
+                    url.push_str(&format!(
+                        "&pagination_token={}",
+                        urlencoding::encode(cursor)
+                    ));
+                }
+                self.fetch_timeline(&url)
+            }
+            TimelineKind::User { handle } => {
+                let resolved = self.resolve_user_by_handle(handle)?;
+                let mut url = format!(
+                    "https://api.twitter.com/2/users/{}/tweets?max_results={}",
+                    resolved.id, args.limit
+                );
+                url.push_str("&tweet.fields=id,text,author_id,created_at");
+                if let Some(cursor) = &args.cursor {
+                    url.push_str(&format!(
+                        "&pagination_token={}",
+                        urlencoding::encode(cursor)
+                    ));
+                }
+                self.fetch_timeline(&url)
+            }
+        }
+    }
+}
+
+/// Main timeline command handler that delegates to a TimelineClient
+pub struct TimelineCommand<C: TimelineClient> {
+    client: C,
+}
+
+impl TimelineCommand<HttpTimelineClient> {
+    /// Create a new timeline command with HTTP client from environment
+    pub fn new() -> Result<Self, TimelineError> {
+        let client = HttpTimelineClient::from_env()?;
+        Ok(Self { client })
+    }
+}
+
+impl<C: TimelineClient> TimelineCommand<C> {
+    /// Create a timeline command with a custom client (for testing)
+    pub fn with_client(client: C) -> Self {
+        Self { client }
+    }
+
+    /// Retrieve a timeline based on the given arguments.
+    pub fn get(&self, args: TimelineArgs) -> Result<TimelineResult, TimelineError> {
+        self.client.get(&args)
+    }
+}
+
+/// Mock implementation of TimelineClient for testing
+pub struct MockTimelineClient {
+    should_auth_fail: bool,
+}
+
+impl MockTimelineClient {
+    /// Create a new mock client
+    pub fn new() -> Self {
+        Self {
+            should_auth_fail: false,
+        }
+    }
+
+    /// Create a mock that simulates auth failure
+    pub fn with_auth_failure() -> Self {
+        Self {
+            should_auth_fail: true,
         }
     }
 
@@ -195,61 +472,59 @@ impl TimelineCommand {
             None
         }
     }
+}
 
-    fn get_home(&self, args: &TimelineArgs) -> Result<TimelineResult, TimelineError> {
-        // Resolve authenticated user (would call GET /2/users/me in production)
-        let _user = self.resolve_me()?;
-
-        let offset = Self::parse_cursor_offset(&args.cursor);
-        let tweets = Self::build_stub_tweets("home", offset, args.limit);
-        let count = tweets.len();
-        let meta = Self::build_pagination(offset, args.limit, count);
-
-        Ok(TimelineResult { tweets, meta })
-    }
-
-    fn get_mentions(&self, args: &TimelineArgs) -> Result<TimelineResult, TimelineError> {
-        // Resolve authenticated user (would call GET /2/users/me in production)
-        let _user = self.resolve_me()?;
-
-        let offset = Self::parse_cursor_offset(&args.cursor);
-        let tweets = Self::build_stub_tweets("mention", offset, args.limit);
-        let count = tweets.len();
-        let meta = Self::build_pagination(offset, args.limit, count);
-
-        Ok(TimelineResult { tweets, meta })
-    }
-
-    fn get_user_tweets(
-        &self,
-        handle: String,
-        args: &TimelineArgs,
-    ) -> Result<TimelineResult, TimelineError> {
-        // Step 1: Resolve handle to user ID
-        // In production: GET /2/users/by/username/{handle}
-        // For testing: uses XCOM_TEST_RESOLVE_USER_{HANDLE}_ID env var or deterministic stub
-        let resolved = self.resolve_user_by_handle(&handle)?;
-
-        tracing::info!(
-            handle = %handle,
-            user_id = %resolved.id,
-            "Resolved handle to user ID, fetching tweets"
-        );
-
-        // Step 2: Fetch tweets for the resolved user ID
-        // In production: GET /2/users/{id}/tweets
-        let offset = Self::parse_cursor_offset(&args.cursor);
-        let tweets = Self::build_stub_tweets(&resolved.handle, offset, args.limit);
-        let count = tweets.len();
-        let meta = Self::build_pagination(offset, args.limit, count);
-
-        Ok(TimelineResult { tweets, meta })
+impl Default for MockTimelineClient {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl Default for TimelineCommand {
-    fn default() -> Self {
-        Self::new()
+impl TimelineClient for MockTimelineClient {
+    fn get(&self, args: &TimelineArgs) -> Result<TimelineResult, TimelineError> {
+        if self.should_auth_fail {
+            return Err(TimelineError::AuthRequired);
+        }
+
+        // Check for simulated errors
+        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
+            use crate::tweets::ClassifiedError;
+            match error_type.as_str() {
+                "rate_limit" => {
+                    let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(60000);
+                    return Err(TimelineError::ApiError(
+                        ClassifiedError::from_status_code(429, "Rate limit exceeded".to_string())
+                            .with_retry_after(retry_after),
+                    ));
+                }
+                "server_error" => {
+                    return Err(TimelineError::ApiError(ClassifiedError::from_status_code(
+                        500,
+                        "Internal server error".to_string(),
+                    )));
+                }
+                "auth_required" => {
+                    return Err(TimelineError::AuthRequired);
+                }
+                _ => {}
+            }
+        }
+
+        let offset = Self::parse_cursor_offset(&args.cursor);
+        let prefix = match &args.kind {
+            TimelineKind::Home => "home",
+            TimelineKind::Mentions => "mention",
+            TimelineKind::User { handle } => handle.as_str(),
+        };
+
+        let tweets = Self::build_stub_tweets(prefix, offset, args.limit);
+        let count = tweets.len();
+        let meta = Self::build_pagination(offset, args.limit, count);
+
+        Ok(TimelineResult { tweets, meta })
     }
 }
 
@@ -277,9 +552,10 @@ mod tests {
         let _guard = crate::test_utils::env_lock::ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        set_authenticated();
+        unset_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 5,
@@ -300,7 +576,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::Mentions,
             limit: 3,
@@ -321,7 +598,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::User {
                 handle: "johndoe".to_string(),
@@ -344,7 +622,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 5,
@@ -366,7 +645,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 10,
@@ -392,7 +672,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::with_auth_failure();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 10,
@@ -416,7 +697,8 @@ mod tests {
         std::env::set_var("XCOM_SIMULATE_ERROR", "rate_limit");
         std::env::set_var("XCOM_RETRY_AFTER_MS", "5000");
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 10,
@@ -443,7 +725,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::Mentions,
             limit: 5,
@@ -471,7 +754,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         // Verify handle resolution: tweets should use the resolved handle
         let args = TimelineArgs {
             kind: TimelineKind::User {
@@ -506,7 +790,8 @@ mod tests {
             "overridden_user_id_123",
         );
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::User {
                 handle: "testhandle".to_string(),
@@ -529,7 +814,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
-        let cmd = TimelineCommand::new();
+        let client = MockTimelineClient::new();
+        let cmd = TimelineCommand::with_client(client);
         let args = TimelineArgs {
             kind: TimelineKind::Home,
             limit: 10,

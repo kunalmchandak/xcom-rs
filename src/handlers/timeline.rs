@@ -5,7 +5,7 @@ use crate::{
     timeline::{
         commands::TimelineError,
         models::{TimelineArgs, TimelineKind},
-        TimelineCommand,
+        HttpTimelineClient, TimelineCommand,
     },
 };
 use anyhow::Result;
@@ -17,7 +17,19 @@ pub fn handle_timeline(
     create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,
     output_format: OutputFormat,
 ) -> Result<()> {
-    let timeline_cmd = TimelineCommand::new();
+    let timeline_cmd = match TimelineCommand::<HttpTimelineClient>::new() {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            let error = build_error_details(&e);
+            let envelope = if let Some(meta) = create_meta() {
+                Envelope::<()>::error_with_meta("error", error, meta)
+            } else {
+                Envelope::<()>::error("error", error)
+            };
+            let _ = print_envelope(&envelope, output_format);
+            std::process::exit(ExitCode::AuthenticationError.into());
+        }
+    };
 
     let (args, response_type) = match command {
         TimelineCommands::Home { limit, cursor } => (

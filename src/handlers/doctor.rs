@@ -261,8 +261,6 @@ mod tests {
         let probe_result = result.unwrap();
         assert_eq!(probe_result.status, doctor::ProbeStatus::Ok);
         assert_eq!(probe_result.http_status, Some(200));
-        // duration_ms can be 0 for very fast mock responses, so just check it's set
-        assert!(probe_result.duration_ms >= 0);
 
         mock.assert();
     }
@@ -353,8 +351,6 @@ mod tests {
         let probe_result = result.unwrap();
         assert_eq!(probe_result.status, doctor::ProbeStatus::Failed);
         assert_eq!(probe_result.http_status, Some(401));
-        // duration_ms can be 0 for very fast mock responses, so just check it's set
-        assert!(probe_result.duration_ms >= 0);
         assert!(probe_result
             .message
             .as_ref()
@@ -440,8 +436,6 @@ mod tests {
         let probe_result = result.unwrap();
         assert_eq!(probe_result.status, doctor::ProbeStatus::Failed);
         assert!(probe_result.http_status.is_none());
-        // duration_ms should be set even for network errors
-        assert!(probe_result.duration_ms >= 0);
         assert!(probe_result
             .message
             .as_ref()

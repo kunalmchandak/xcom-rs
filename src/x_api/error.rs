@@ -184,7 +184,7 @@ mod tests {
             assert!(error.retry_after_ms.is_some());
             let retry_ms = error.retry_after_ms.unwrap();
             // Should be approximately 10000ms (10 seconds)
-            assert!(retry_ms >= 9000 && retry_ms <= 11000);
+            assert!((9000..=11000).contains(&retry_ms));
         } else {
             panic!("Expected status error");
         }

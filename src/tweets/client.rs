@@ -3,6 +3,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use super::commands::types::{ListArgs, ListResult};
 use super::models::{ConversationEdge, ConversationResult, ReferencedTweet, Tweet};
 use crate::x_api::XApiClient;
 
@@ -19,6 +20,9 @@ pub trait TweetApiClient: Send + Sync {
     /// Search recent tweets matching a query.
     /// Returns a list of matching tweets.
     fn search_recent(&self, query: &str, limit: usize) -> Result<Vec<Tweet>>;
+
+    /// List tweets for the authenticated user with field projection and pagination
+    fn list_tweets(&self, args: &ListArgs) -> Result<ListResult>;
 }
 
 /// HTTP implementation of TweetApiClient using XApiClient for real API calls.
@@ -64,6 +68,31 @@ struct SearchTweetsResponse {
     data: Vec<Tweet>,
 }
 
+/// Response from listing tweets (with pagination)
+#[derive(Debug, Deserialize)]
+struct ListTweetsResponse {
+    data: Option<Vec<Tweet>>,
+    meta: Option<ListTweetsResponseMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListTweetsResponseMeta {
+    #[allow(dead_code)]
+    result_count: Option<usize>,
+    next_token: Option<String>,
+}
+
+/// Response from /2/users/me
+#[derive(Debug, Deserialize)]
+struct UsersMeResponse {
+    data: UsersMeData,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsersMeData {
+    id: String,
+}
+
 impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
     fn post_tweet(&self, text: &str, reply_to: Option<&str>) -> Result<Tweet> {
         let request = CreateTweetRequest {
@@ -85,7 +114,10 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
     }
 
     fn get_tweet(&self, tweet_id: &str) -> Result<Tweet> {
-        let path = format!("/2/tweets/{}", tweet_id);
+        let path = format!(
+            "/2/tweets/{}?tweet.fields=id,text,author_id,created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
+            tweet_id
+        );
         let response: Result<GetTweetResponse, _> = self.client.get(&path);
         match response {
             Ok(resp) => Ok(resp.data),
@@ -99,12 +131,83 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
 
     fn search_recent(&self, query: &str, limit: usize) -> Result<Vec<Tweet>> {
         let path = format!(
-            "/2/tweets/search/recent?query={}&max_results={}",
-            query, limit
+            "/2/tweets/search/recent?query={}&max_results={}&tweet.fields=id,text,author_id,created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
+            urlencoding::encode(query),
+            limit
         );
         let response: Result<SearchTweetsResponse, _> = self.client.get(&path);
         match response {
             Ok(resp) => Ok(resp.data),
+            Err(error_details) => Err(anyhow::anyhow!(
+                "{:?}: {}",
+                error_details.code,
+                error_details.message
+            )),
+        }
+    }
+
+    fn list_tweets(&self, args: &ListArgs) -> Result<ListResult> {
+        use super::commands::types::{ListResultMeta, PaginationMeta};
+
+        // Resolve authenticated user ID
+        let user_id = if let Ok(test_id) = std::env::var("XCOM_TEST_USER_ID") {
+            test_id
+        } else {
+            let me_response: Result<UsersMeResponse, _> = self.client.get("/2/users/me");
+            match me_response {
+                Ok(resp) => resp.data.id,
+                Err(error_details) => {
+                    return Err(anyhow::anyhow!(
+                        "{:?}: {}",
+                        error_details.code,
+                        error_details.message
+                    ));
+                }
+            }
+        };
+
+        // Build field list from requested fields
+        let field_strings: Vec<String> =
+            args.fields.iter().map(|f| f.as_str().to_string()).collect();
+        let fields_param = field_strings.join(",");
+
+        let mut path = format!(
+            "/2/users/{}/tweets?max_results={}&tweet.fields={}",
+            user_id,
+            args.limit.unwrap_or(10),
+            urlencoding::encode(&fields_param)
+        );
+
+        if let Some(cursor) = &args.cursor {
+            path.push_str(&format!(
+                "&pagination_token={}",
+                urlencoding::encode(cursor)
+            ));
+        }
+
+        let response: Result<ListTweetsResponse, _> = self.client.get(&path);
+        match response {
+            Ok(resp) => {
+                let tweets: Vec<Tweet> = resp.data.unwrap_or_default();
+
+                // Apply field projection
+                let projected_tweets = tweets
+                    .into_iter()
+                    .map(|t| t.project(&args.fields))
+                    .collect();
+
+                let meta = resp.meta.map(|api_meta| ListResultMeta {
+                    pagination: PaginationMeta {
+                        next_cursor: api_meta.next_token,
+                        prev_cursor: None,
+                    },
+                });
+
+                Ok(ListResult {
+                    tweets: projected_tweets,
+                    meta,
+                })
+            }
             Err(error_details) => Err(anyhow::anyhow!(
                 "{:?}: {}",
                 error_details.code,
@@ -224,6 +327,57 @@ impl TweetApiClient for MockTweetApiClient {
             return Err(anyhow::anyhow!("Simulated API error"));
         }
         Ok(self.search_results.iter().take(limit).cloned().collect())
+    }
+
+    fn list_tweets(&self, args: &ListArgs) -> Result<ListResult> {
+        use super::commands::types::{ListResultMeta, PaginationMeta};
+
+        if self.simulate_error {
+            return Err(anyhow::anyhow!("Simulated API error"));
+        }
+
+        let limit = args.limit.unwrap_or(10);
+        let offset = if let Some(cursor) = &args.cursor {
+            cursor
+                .strip_prefix("cursor_")
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        let mut tweets = Vec::new();
+        for i in offset..(offset + limit) {
+            let mut tweet = Tweet::new(format!("tweet_{}", i));
+            tweet.text = Some(format!("Tweet text {}", i));
+            tweet.author_id = Some(format!("user_{}", i));
+            tweet.created_at = Some("2024-01-01T00:00:00Z".to_string());
+
+            // Apply field projection
+            let projected = tweet.project(&args.fields);
+            tweets.push(projected);
+        }
+
+        let next_cursor = if tweets.len() == limit {
+            Some(format!("cursor_{}", offset + limit))
+        } else {
+            None
+        };
+
+        let prev_cursor = if offset > 0 {
+            Some(format!("cursor_{}", offset.saturating_sub(limit)))
+        } else {
+            None
+        };
+
+        let meta = Some(ListResultMeta {
+            pagination: PaginationMeta {
+                next_cursor,
+                prev_cursor,
+            },
+        });
+
+        Ok(ListResult { tweets, meta })
     }
 }
 
