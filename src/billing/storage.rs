@@ -156,13 +156,13 @@ impl BudgetTracker {
 
 /// Cost estimator for X API operations
 pub struct CostEstimator {
-    // In real implementation, this would load from a config file or API
     rate_table: HashMap<String, u32>,
     usd_per_credit: f64,
 }
 
 impl CostEstimator {
-    pub fn new() -> Self {
+    /// Get default rate table (used when config file is not available)
+    fn default_rate_table() -> HashMap<String, u32> {
         let mut rate_table = HashMap::new();
         // Example rates (stub data)
         rate_table.insert("tweets.create".to_string(), 5);
@@ -190,9 +190,74 @@ impl CostEstimator {
         rate_table.insert("bookmarks.add".to_string(), 2);
         rate_table.insert("bookmarks.remove".to_string(), 2);
         rate_table.insert("bookmarks.list".to_string(), 1);
+        rate_table
+    }
 
+    /// Get default config path: ~/.config/xcom-rs/billing_rates.json
+    pub fn default_config_path() -> Result<PathBuf> {
+        let config_dir = if let Ok(xdg_config) = std::env::var("XDG_CONFIG_HOME") {
+            PathBuf::from(xdg_config).join("xcom-rs")
+        } else {
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
+            PathBuf::from(home).join(".config").join("xcom-rs")
+        };
+        std::fs::create_dir_all(&config_dir)?;
+        Ok(config_dir.join("billing_rates.json"))
+    }
+
+    /// Load rate table from config file, fallback to default if not available
+    fn load_rate_table() -> HashMap<String, u32> {
+        match Self::default_config_path() {
+            Ok(path) => {
+                if path.exists() {
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => match serde_json::from_str::<HashMap<String, u32>>(&content)
+                        {
+                            Ok(rates) => {
+                                tracing::info!(
+                                    path = %path.display(),
+                                    "Loaded billing rate table from config file"
+                                );
+                                return rates;
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    path = %path.display(),
+                                    "Failed to parse billing rate config, using default rates"
+                                );
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                path = %path.display(),
+                                "Failed to read billing rate config, using default rates"
+                            );
+                        }
+                    }
+                } else {
+                    tracing::debug!(
+                        path = %path.display(),
+                        "Billing rate config not found, using default rates"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to determine config path, using default rates"
+                );
+            }
+        }
+        Self::default_rate_table()
+    }
+
+    pub fn new() -> Self {
         Self {
-            rate_table,
+            rate_table: Self::load_rate_table(),
             usd_per_credit: 0.001, // $0.001 per credit
         }
     }
@@ -441,5 +506,121 @@ mod tests {
             .join("xcom-rs")
             .join("budget.json");
         assert!(path.ends_with(&expected_suffix));
+    }
+
+    #[test]
+    fn test_load_rate_table_with_config_file() {
+        use std::fs;
+
+        // Create a temporary directory for testing
+        let temp_dir = std::env::temp_dir().join(format!("xcom-rs-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save current value
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+
+        // Set XDG_CONFIG_HOME to temp directory
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
+
+        // Create a test rate table
+        let config_path = temp_dir.join("xcom-rs").join("billing_rates.json");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+
+        let mut test_rates = HashMap::new();
+        test_rates.insert("tweets.create".to_string(), 7);
+        test_rates.insert("tweets.read".to_string(), 2);
+
+        fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&test_rates).unwrap(),
+        )
+        .unwrap();
+
+        // Create estimator and verify it loads the config
+        let estimator = CostEstimator::new();
+        let params = HashMap::new();
+        let cost = estimator.estimate("tweets.create", &params);
+        assert_eq!(cost.credits, 7); // Should use config value, not default (5)
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_load_rate_table_fallback_on_missing_file() {
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save current value
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+
+        // Set XDG_CONFIG_HOME to a directory that doesn't have the config file
+        let temp_dir = std::env::temp_dir().join(format!("xcom-rs-test-{}", uuid::Uuid::new_v4()));
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
+
+        // Create estimator - should use default rates
+        let estimator = CostEstimator::new();
+        let params = HashMap::new();
+        let cost = estimator.estimate("tweets.create", &params);
+        assert_eq!(cost.credits, 5); // Should use default value
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+    }
+
+    #[test]
+    fn test_load_rate_table_fallback_on_invalid_json() {
+        use std::fs;
+
+        // Create a temporary directory for testing
+        let temp_dir = std::env::temp_dir().join(format!("xcom-rs-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Use a shared global mutex to prevent parallel test execution from interfering
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save current value
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+
+        // Set XDG_CONFIG_HOME to temp directory
+        std::env::set_var("XDG_CONFIG_HOME", &temp_dir);
+
+        // Create an invalid JSON file
+        let config_path = temp_dir.join("xcom-rs").join("billing_rates.json");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(&config_path, "{ invalid json }").unwrap();
+
+        // Create estimator - should fallback to default rates
+        let estimator = CostEstimator::new();
+        let params = HashMap::new();
+        let cost = estimator.estimate("tweets.create", &params);
+        assert_eq!(cost.credits, 5); // Should use default value
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).unwrap();
     }
 }
