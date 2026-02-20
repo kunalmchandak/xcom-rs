@@ -5,7 +5,6 @@ pub mod http_client;
 pub mod ledger;
 pub mod models;
 
-pub use client::MockTweetApiClient;
 pub use commands::{
     ClassifiedError, ConversationArgs, CreateArgs, EngagementArgs, EngagementResult,
     IdempotencyConflictError, IfExistsPolicy, ListArgs, ReplyArgs, ShowArgs, ThreadArgs,
@@ -13,3 +12,7 @@ pub use commands::{
 };
 pub use ledger::IdempotencyLedger;
 pub use models::{ConversationResult, Tweet, TweetFields, TweetMeta};
+
+// Mock client is only available in tests
+#[cfg(test)]
+pub use client::MockTweetApiClient;

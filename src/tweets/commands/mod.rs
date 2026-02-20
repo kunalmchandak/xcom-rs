@@ -90,7 +90,7 @@ impl TweetCommand {
 
     /// List tweets with field projection and pagination
     pub fn list(&self, args: ListArgs) -> Result<ListResult> {
-        list::list(args)
+        list::list_with_client(self.api_client.as_ref(), args)
     }
 
     /// Reply to a tweet with idempotency support
@@ -124,7 +124,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let ledger = IdempotencyLedger::new(Some(&db_path)).unwrap();
-        let cmd = TweetCommand::new(ledger);
+        let client = Box::new(crate::tweets::client::MockTweetApiClient::new());
+        let cmd = TweetCommand::with_client(ledger, client);
         (cmd, temp_dir)
     }
 
@@ -229,6 +230,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
         std::env::remove_var("XCOM_RETRY_AFTER_MS");
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+        std::env::set_var("XCOM_TEST_USER_ID", "test_user_id");
 
         let (cmd, _temp) = create_test_command();
         let args = ListArgs {
@@ -252,6 +255,8 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
         std::env::remove_var("XCOM_RETRY_AFTER_MS");
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+        std::env::set_var("XCOM_TEST_USER_ID", "test_user_id");
 
         let (cmd, _temp) = create_test_command();
         let args = ListArgs {

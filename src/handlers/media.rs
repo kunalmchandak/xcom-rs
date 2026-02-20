@@ -7,9 +7,6 @@ use crate::{
 use anyhow::Result;
 use std::collections::HashMap;
 
-#[cfg(test)]
-use crate::media::StubMediaClient;
-
 pub fn handle_media(
     command: MediaCommands,
     create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,

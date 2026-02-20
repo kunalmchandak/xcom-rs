@@ -1,6 +1,6 @@
 [package]
 name = "xcom-rs"
-version = "0.1.29"
+version = "0.1.31"
 edition = "2021"
 rust-version = "1.70"
 description = "Agent-friendly X.com CLI with introspection, auth, billing, tweets, and embedded skills"
@@ -38,7 +38,8 @@ sha2 = "0.10"
 hex = "0.4"
 dirs = "5.0"
 tempfile = "3.10"
-ureq = "2.10"
+ureq = { version = "2.10", features = ["json"] }
+urlencoding = "2.1"
 
 [dev-dependencies]
 mockito = "1.5"

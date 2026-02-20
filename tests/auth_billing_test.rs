@@ -64,7 +64,7 @@ fn test_auth_status_authenticated_with_env() {
         "scopes should be present and be an array"
     );
     let scopes = json["data"]["scopes"].as_array().unwrap();
-    assert!(scopes.len() > 0, "scopes should not be empty");
+    assert!(!scopes.is_empty(), "scopes should not be empty");
 }
 
 #[test]
