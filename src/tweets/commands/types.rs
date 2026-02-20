@@ -259,6 +259,37 @@ impl ClassifiedError {
         self
     }
 
+    /// Create from ErrorDetails (from X API client)
+    pub fn from_error_details(error_details: &crate::protocol::ErrorDetails) -> Self {
+        use crate::protocol::ErrorCode;
+
+        // Map ErrorCode to status code for classification
+        let status_code = match error_details.code {
+            ErrorCode::AuthenticationFailed | ErrorCode::AuthRequired => Some(401),
+            ErrorCode::AuthorizationFailed => Some(403),
+            ErrorCode::NotFound => Some(404),
+            ErrorCode::RateLimitExceeded => Some(429),
+            ErrorCode::ServiceUnavailable => Some(503),
+            _ => None,
+        };
+
+        let (kind, is_retryable) = if error_details.is_retryable {
+            (ErrorKind::Retryable, true)
+        } else if error_details.code == ErrorCode::NetworkError {
+            (ErrorKind::Timeout, true)
+        } else {
+            (ErrorKind::NonRetryable, false)
+        };
+
+        Self {
+            kind,
+            status_code,
+            message: error_details.message.clone(),
+            is_retryable,
+            retry_after_ms: error_details.retry_after_ms,
+        }
+    }
+
     /// Convert to ErrorCode for protocol
     pub fn to_error_code(&self) -> crate::protocol::ErrorCode {
         use crate::protocol::ErrorCode;
@@ -271,7 +302,14 @@ impl ClassifiedError {
                 }
             }
             ErrorKind::Timeout => ErrorCode::NetworkError,
-            ErrorKind::NonRetryable => ErrorCode::InternalError,
+            ErrorKind::NonRetryable => {
+                // Map 401 to AuthRequired, others to InternalError
+                if let Some(401) = self.status_code {
+                    ErrorCode::AuthRequired
+                } else {
+                    ErrorCode::InternalError
+                }
+            }
         }
     }
 }

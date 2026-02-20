@@ -1,7 +1,9 @@
 /// Integration tests for XDG paths support
 /// These tests verify that XDG_DATA_HOME is respected for budget tracking
+mod common;
+
+use common::test_utils::helpers::assert_success_json;
 use std::process::Command;
-use xcom_rs::test_utils::helpers::assert_success_json;
 
 #[test]
 #[cfg_attr(not(feature = "env-tests"), ignore)]

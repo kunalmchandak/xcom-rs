@@ -461,7 +461,19 @@ fn handle_conversation(
             }
         }
         Err(e) => {
-            let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
+            let error = if let Some(classified) = e.downcast_ref::<ClassifiedError>() {
+                if let Some(retry_after_ms) = classified.retry_after_ms {
+                    ErrorDetails::with_retry_after(
+                        classified.to_error_code(),
+                        e.to_string(),
+                        retry_after_ms,
+                    )
+                } else {
+                    ErrorDetails::new(classified.to_error_code(), e.to_string())
+                }
+            } else {
+                ErrorDetails::new(ErrorCode::InternalError, e.to_string())
+            };
             let envelope = if let Some(meta) = create_meta() {
                 Envelope::<()>::error_with_meta("error", error, meta)
             } else {

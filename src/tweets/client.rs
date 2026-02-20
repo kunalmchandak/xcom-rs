@@ -3,8 +3,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use super::commands::types::{ListArgs, ListResult};
-use super::models::{ConversationEdge, ConversationResult, ReferencedTweet, Tweet};
+use super::commands::types::{ClassifiedError, ListArgs, ListResult};
+use super::models::{ConversationEdge, ConversationResult, Tweet};
 use crate::x_api::XApiClient;
 
 /// Trait representing the X API client interface for tweet operations.
@@ -105,11 +105,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
         let response: Result<CreateTweetResponse, _> = self.client.post("/2/tweets", &request);
         match response {
             Ok(resp) => Ok(resp.data),
-            Err(error_details) => Err(anyhow::anyhow!(
-                "{:?}: {}",
-                error_details.code,
-                error_details.message
-            )),
+            Err(error_details) => Err(ClassifiedError::from_error_details(&error_details).into()),
         }
     }
 
@@ -121,11 +117,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
         let response: Result<GetTweetResponse, _> = self.client.get(&path);
         match response {
             Ok(resp) => Ok(resp.data),
-            Err(error_details) => Err(anyhow::anyhow!(
-                "{:?}: {}",
-                error_details.code,
-                error_details.message
-            )),
+            Err(error_details) => Err(ClassifiedError::from_error_details(&error_details).into()),
         }
     }
 
@@ -138,11 +130,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
         let response: Result<SearchTweetsResponse, _> = self.client.get(&path);
         match response {
             Ok(resp) => Ok(resp.data),
-            Err(error_details) => Err(anyhow::anyhow!(
-                "{:?}: {}",
-                error_details.code,
-                error_details.message
-            )),
+            Err(error_details) => Err(ClassifiedError::from_error_details(&error_details).into()),
         }
     }
 
@@ -157,11 +145,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
             match me_response {
                 Ok(resp) => resp.data.id,
                 Err(error_details) => {
-                    return Err(anyhow::anyhow!(
-                        "{:?}: {}",
-                        error_details.code,
-                        error_details.message
-                    ));
+                    return Err(ClassifiedError::from_error_details(&error_details).into());
                 }
             }
         };
@@ -208,176 +192,8 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
                     meta,
                 })
             }
-            Err(error_details) => Err(anyhow::anyhow!(
-                "{:?}: {}",
-                error_details.code,
-                error_details.message
-            )),
+            Err(error_details) => Err(ClassifiedError::from_error_details(&error_details).into()),
         }
-    }
-}
-
-/// Mock implementation of TweetApiClient for testing.
-pub struct MockTweetApiClient {
-    /// Pre-configured tweets to return from get_tweet
-    pub tweets: std::collections::HashMap<String, Tweet>,
-    /// Pre-configured search results
-    pub search_results: Vec<Tweet>,
-    /// Whether to simulate an error
-    pub simulate_error: bool,
-}
-
-impl MockTweetApiClient {
-    /// Create a new empty mock client
-    pub fn new() -> Self {
-        Self {
-            tweets: std::collections::HashMap::new(),
-            search_results: Vec::new(),
-            simulate_error: false,
-        }
-    }
-
-    /// Add a tweet to the mock store
-    pub fn add_tweet(&mut self, tweet: Tweet) {
-        self.tweets.insert(tweet.id.clone(), tweet);
-    }
-
-    /// Build a mock client with a conversation tree fixture.
-    /// Returns a mock client containing a root tweet and replies, all sharing
-    /// the same conversation_id.
-    pub fn with_conversation_fixture() -> Self {
-        let mut client = Self::new();
-
-        let conversation_id = "conv_root_001".to_string();
-
-        // Root tweet
-        let mut root = Tweet::new("tweet_root".to_string());
-        root.text = Some("Root tweet".to_string());
-        root.author_id = Some("user_1".to_string());
-        root.created_at = Some("2024-01-01T00:00:00Z".to_string());
-        root.conversation_id = Some(conversation_id.clone());
-        client.add_tweet(root);
-
-        // First-level reply
-        let mut reply1 = Tweet::new("tweet_reply1".to_string());
-        reply1.text = Some("First reply".to_string());
-        reply1.author_id = Some("user_2".to_string());
-        reply1.created_at = Some("2024-01-01T00:01:00Z".to_string());
-        reply1.conversation_id = Some(conversation_id.clone());
-        reply1.referenced_tweets = Some(vec![ReferencedTweet {
-            ref_type: "replied_to".to_string(),
-            id: "tweet_root".to_string(),
-        }]);
-        client.add_tweet(reply1.clone());
-
-        // Second-level reply
-        let mut reply2 = Tweet::new("tweet_reply2".to_string());
-        reply2.text = Some("Second reply (to reply1)".to_string());
-        reply2.author_id = Some("user_3".to_string());
-        reply2.created_at = Some("2024-01-01T00:02:00Z".to_string());
-        reply2.conversation_id = Some(conversation_id.clone());
-        reply2.referenced_tweets = Some(vec![ReferencedTweet {
-            ref_type: "replied_to".to_string(),
-            id: "tweet_reply1".to_string(),
-        }]);
-        client.add_tweet(reply2);
-
-        // Populate search results (all tweets in the conversation)
-        client.search_results = client.tweets.values().cloned().collect();
-
-        client
-    }
-}
-
-impl Default for MockTweetApiClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TweetApiClient for MockTweetApiClient {
-    fn post_tweet(&self, text: &str, reply_to: Option<&str>) -> Result<Tweet> {
-        if self.simulate_error {
-            return Err(anyhow::anyhow!("Simulated API error"));
-        }
-        let mut tweet = Tweet::new(format!("mock_tweet_{}", uuid::Uuid::new_v4()));
-        tweet.text = Some(text.to_string());
-        tweet.created_at = Some("2024-01-01T00:00:00Z".to_string());
-        if let Some(reply_id) = reply_to {
-            tweet.referenced_tweets = Some(vec![ReferencedTweet {
-                ref_type: "replied_to".to_string(),
-                id: reply_id.to_string(),
-            }]);
-        }
-        Ok(tweet)
-    }
-
-    fn get_tweet(&self, tweet_id: &str) -> Result<Tweet> {
-        if self.simulate_error {
-            return Err(anyhow::anyhow!("Simulated API error"));
-        }
-        self.tweets
-            .get(tweet_id)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("Tweet not found: {}", tweet_id))
-    }
-
-    fn search_recent(&self, _query: &str, limit: usize) -> Result<Vec<Tweet>> {
-        if self.simulate_error {
-            return Err(anyhow::anyhow!("Simulated API error"));
-        }
-        Ok(self.search_results.iter().take(limit).cloned().collect())
-    }
-
-    fn list_tweets(&self, args: &ListArgs) -> Result<ListResult> {
-        use super::commands::types::{ListResultMeta, PaginationMeta};
-
-        if self.simulate_error {
-            return Err(anyhow::anyhow!("Simulated API error"));
-        }
-
-        let limit = args.limit.unwrap_or(10);
-        let offset = if let Some(cursor) = &args.cursor {
-            cursor
-                .strip_prefix("cursor_")
-                .and_then(|s| s.parse::<usize>().ok())
-                .unwrap_or(0)
-        } else {
-            0
-        };
-
-        let mut tweets = Vec::new();
-        for i in offset..(offset + limit) {
-            let mut tweet = Tweet::new(format!("tweet_{}", i));
-            tweet.text = Some(format!("Tweet text {}", i));
-            tweet.author_id = Some(format!("user_{}", i));
-            tweet.created_at = Some("2024-01-01T00:00:00Z".to_string());
-
-            // Apply field projection
-            let projected = tweet.project(&args.fields);
-            tweets.push(projected);
-        }
-
-        let next_cursor = if tweets.len() == limit {
-            Some(format!("cursor_{}", offset + limit))
-        } else {
-            None
-        };
-
-        let prev_cursor = if offset > 0 {
-            Some(format!("cursor_{}", offset.saturating_sub(limit)))
-        } else {
-            None
-        };
-
-        let meta = Some(ListResultMeta {
-            pagination: PaginationMeta {
-                next_cursor,
-                prev_cursor,
-            },
-        });
-
-        Ok(ListResult { tweets, meta })
     }
 }
 
@@ -438,63 +254,4 @@ pub fn fetch_conversation(
         posts,
         edges,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_mock_post_tweet_no_reply() {
-        let client = MockTweetApiClient::new();
-        let tweet = client.post_tweet("Hello world", None).unwrap();
-        assert_eq!(tweet.text, Some("Hello world".to_string()));
-        assert!(tweet.referenced_tweets.is_none());
-    }
-
-    #[test]
-    fn test_mock_post_tweet_with_reply() {
-        let client = MockTweetApiClient::new();
-        let tweet = client
-            .post_tweet("Hello reply", Some("parent_tweet_id"))
-            .unwrap();
-        assert!(tweet.referenced_tweets.is_some());
-        let refs = tweet.referenced_tweets.unwrap();
-        assert_eq!(refs[0].ref_type, "replied_to");
-        assert_eq!(refs[0].id, "parent_tweet_id");
-    }
-
-    #[test]
-    fn test_mock_get_tweet() {
-        let client = MockTweetApiClient::with_conversation_fixture();
-        let tweet = client.get_tweet("tweet_root").unwrap();
-        assert_eq!(tweet.id, "tweet_root");
-        assert_eq!(tweet.conversation_id, Some("conv_root_001".to_string()));
-    }
-
-    #[test]
-    fn test_mock_get_tweet_not_found() {
-        let client = MockTweetApiClient::new();
-        let result = client.get_tweet("nonexistent");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_build_conversation_edges() {
-        let client = MockTweetApiClient::with_conversation_fixture();
-        let tweets: Vec<Tweet> = client.tweets.values().cloned().collect();
-        let edges = build_conversation_edges(&tweets);
-        // reply1 -> root and reply2 -> reply1
-        assert!(edges.len() >= 2);
-    }
-
-    #[test]
-    fn test_fetch_conversation() {
-        let client = MockTweetApiClient::with_conversation_fixture();
-        let result = fetch_conversation(&client, "tweet_root").unwrap();
-        assert!(!result.posts.is_empty());
-        assert!(result.posts.iter().any(|t| t.id == "tweet_root"));
-        // Edges should exist for replies
-        assert!(!result.edges.is_empty());
-    }
 }

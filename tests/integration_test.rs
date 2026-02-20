@@ -1,7 +1,9 @@
+mod common;
+
+use common::test_utils::helpers::{assert_error_json, assert_success_json};
 use std::process::Command;
 use xcom_rs::context::{ExecutionContext, ExecutionPolicy};
 use xcom_rs::protocol::ErrorCode;
-use xcom_rs::test_utils::helpers::{assert_error_json, assert_success_json};
 
 #[test]
 fn test_non_interactive_context() {

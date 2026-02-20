@@ -4,12 +4,12 @@
 TBD - created by archiving change add-timeline-commands. Update Purpose after archive.
 ## Requirements
 ### Requirement: ホームタイムラインの取得
-`xcom-rs` は `timeline home` 実行時にX APIからホームタイムラインを取得しなければならない（MUST）。
+`xcom-rs` は `timeline home` の結果をX APIの応答に基づいて返し、擬似エラー注入やモック実装による結果改変を行ってはならない（MUST NOT）。
 
-#### Scenario: API由来のhome取得
-- **Given** 利用者が `timeline home --limit 20` を実行する
-- **When** CLIがAPIから結果を取得する
-- **Then** `data.tweets` はAPIの結果に基づく
+#### Scenario: 擬似エラー注入の無効化
+- **Given** `XCOM_SIMULATE_ERROR` が設定されている
+- **When** 利用者が `timeline home --output json` を実行する
+- **Then** 返却内容はAPIレスポンスに基づく
 
 ### Requirement: メンションタイムラインの取得
 `xcom-rs` は `timeline mentions` 実行時にX APIからメンションを取得しなければならない（MUST）。

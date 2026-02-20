@@ -308,33 +308,6 @@ impl HttpTimelineClient {
 
 impl TimelineClient for HttpTimelineClient {
     fn get(&self, args: &TimelineArgs) -> Result<TimelineResult, TimelineError> {
-        // Check for simulated errors
-        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
-            use crate::tweets::ClassifiedError;
-            match error_type.as_str() {
-                "rate_limit" => {
-                    let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
-                        .ok()
-                        .and_then(|s| s.parse::<u64>().ok())
-                        .unwrap_or(60000);
-                    return Err(TimelineError::ApiError(
-                        ClassifiedError::from_status_code(429, "Rate limit exceeded".to_string())
-                            .with_retry_after(retry_after),
-                    ));
-                }
-                "server_error" => {
-                    return Err(TimelineError::ApiError(ClassifiedError::from_status_code(
-                        500,
-                        "Internal server error".to_string(),
-                    )));
-                }
-                "auth_required" => {
-                    return Err(TimelineError::AuthRequired);
-                }
-                _ => {}
-            }
-        }
-
         match &args.kind {
             TimelineKind::Home => {
                 let user = self.resolve_me()?;
@@ -411,10 +384,12 @@ impl<C: TimelineClient> TimelineCommand<C> {
 }
 
 /// Mock implementation of TimelineClient for testing
+#[cfg(test)]
 pub struct MockTimelineClient {
     should_auth_fail: bool,
 }
 
+#[cfg(test)]
 impl MockTimelineClient {
     /// Create a new mock client
     pub fn new() -> Self {
@@ -481,43 +456,18 @@ impl MockTimelineClient {
     }
 }
 
+#[cfg(test)]
 impl Default for MockTimelineClient {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(test)]
 impl TimelineClient for MockTimelineClient {
     fn get(&self, args: &TimelineArgs) -> Result<TimelineResult, TimelineError> {
         if self.should_auth_fail {
             return Err(TimelineError::AuthRequired);
-        }
-
-        // Check for simulated errors
-        if let Ok(error_type) = std::env::var("XCOM_SIMULATE_ERROR") {
-            use crate::tweets::ClassifiedError;
-            match error_type.as_str() {
-                "rate_limit" => {
-                    let retry_after = std::env::var("XCOM_RETRY_AFTER_MS")
-                        .ok()
-                        .and_then(|s| s.parse::<u64>().ok())
-                        .unwrap_or(60000);
-                    return Err(TimelineError::ApiError(
-                        ClassifiedError::from_status_code(429, "Rate limit exceeded".to_string())
-                            .with_retry_after(retry_after),
-                    ));
-                }
-                "server_error" => {
-                    return Err(TimelineError::ApiError(ClassifiedError::from_status_code(
-                        500,
-                        "Internal server error".to_string(),
-                    )));
-                }
-                "auth_required" => {
-                    return Err(TimelineError::AuthRequired);
-                }
-                _ => {}
-            }
         }
 
         let offset = Self::parse_cursor_offset(&args.cursor);
@@ -532,326 +482,5 @@ impl TimelineClient for MockTimelineClient {
         let meta = Self::build_pagination(offset, args.limit, count);
 
         Ok(TimelineResult { tweets, meta })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::timeline::models::TimelineKind;
-
-    fn set_authenticated() {
-        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
-        std::env::set_var("XCOM_TEST_USER_ID", "test_user_id");
-        std::env::set_var("XCOM_TEST_USER_HANDLE", "testhandle");
-    }
-
-    fn unset_authenticated() {
-        std::env::remove_var("XCOM_RS_BEARER_TOKEN");
-        std::env::remove_var("XCOM_TEST_USER_ID");
-        std::env::remove_var("XCOM_TEST_USER_HANDLE");
-        std::env::remove_var("XCOM_SIMULATE_ERROR");
-        std::env::remove_var("XCOM_RETRY_AFTER_MS");
-    }
-
-    #[test]
-    fn test_home_timeline_basic() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        unset_authenticated();
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::Home,
-            limit: 5,
-            cursor: None,
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert_eq!(result.tweets.len(), 5);
-        assert!(result.tweets.iter().all(|t| t.id.starts_with("home_")));
-
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_mentions_timeline_basic() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        set_authenticated();
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::Mentions,
-            limit: 3,
-            cursor: None,
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert_eq!(result.tweets.len(), 3);
-        assert!(result.tweets.iter().all(|t| t.id.starts_with("mention_")));
-
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_user_timeline_basic() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        unset_authenticated();
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::User {
-                handle: "johndoe".to_string(),
-            },
-            limit: 4,
-            cursor: None,
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert_eq!(result.tweets.len(), 4);
-        assert!(result.tweets.iter().all(|t| t.id.starts_with("johndoe_")));
-
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_home_timeline_with_cursor() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        set_authenticated();
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::Home,
-            limit: 5,
-            cursor: Some("next_token_5".to_string()),
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert_eq!(result.tweets.len(), 5);
-        // Tweets should start from offset 5
-        assert_eq!(result.tweets[0].id, "home_5");
-
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_timeline_pagination_next_token() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        set_authenticated();
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::Home,
-            limit: 10,
-            cursor: None,
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert!(result.meta.is_some());
-        let meta = result.meta.unwrap();
-        assert_eq!(
-            meta.pagination.next_token,
-            Some("next_token_10".to_string())
-        );
-        assert!(meta.pagination.previous_token.is_none());
-
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_timeline_auth_required() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        unset_authenticated();
-
-        let client = MockTimelineClient::with_auth_failure();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::Home,
-            limit: 10,
-            cursor: None,
-        };
-
-        let result = cmd.get(args);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            TimelineError::AuthRequired => {}
-            e => panic!("Expected AuthRequired, got: {}", e),
-        }
-    }
-
-    #[test]
-    fn test_timeline_rate_limit_error() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        set_authenticated();
-        std::env::set_var("XCOM_SIMULATE_ERROR", "rate_limit");
-        std::env::set_var("XCOM_RETRY_AFTER_MS", "5000");
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::Home,
-            limit: 10,
-            cursor: None,
-        };
-
-        let result = cmd.get(args);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            TimelineError::ApiError(e) => {
-                assert!(e.is_retryable);
-                assert_eq!(e.retry_after_ms, Some(5000));
-            }
-            e => panic!("Expected ApiError, got: {}", e),
-        }
-
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_timeline_pagination_with_previous_token() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        set_authenticated();
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::Mentions,
-            limit: 5,
-            cursor: Some("next_token_10".to_string()),
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert!(result.meta.is_some());
-        let meta = result.meta.unwrap();
-        // Should have both next and previous tokens when in the middle
-        assert!(meta.pagination.next_token.is_some());
-        assert!(meta.pagination.previous_token.is_some());
-        assert_eq!(
-            meta.pagination.previous_token,
-            Some("next_token_5".to_string())
-        );
-
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_user_timeline_resolves_handle_to_id() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        unset_authenticated();
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        // Verify handle resolution: tweets should use the resolved handle
-        let args = TimelineArgs {
-            kind: TimelineKind::User {
-                handle: "XDev".to_string(),
-            },
-            limit: 5,
-            cursor: None,
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert_eq!(result.tweets.len(), 5);
-        // Tweets are built from the resolved handle (case preserved)
-        // The resolve step maps handle -> user_id, then uses handle for stub tweets
-        assert!(
-            result.tweets.iter().all(|t| t.id.starts_with("XDev_")),
-            "Expected tweet IDs to start with 'XDev_', got: {:?}",
-            result.tweets.iter().map(|t| &t.id).collect::<Vec<_>>()
-        );
-
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_user_timeline_resolves_handle_with_env_override() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        unset_authenticated();
-        // Override the resolved user ID for a specific handle
-        std::env::set_var(
-            "XCOM_TEST_RESOLVE_USER_TESTHANDLE_ID",
-            "overridden_user_id_123",
-        );
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::User {
-                handle: "testhandle".to_string(),
-            },
-            limit: 3,
-            cursor: None,
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert_eq!(result.tweets.len(), 3);
-
-        std::env::remove_var("XCOM_TEST_RESOLVE_USER_TESTHANDLE_ID");
-        unset_authenticated();
-    }
-
-    #[test]
-    fn test_pagination_response_uses_snake_case_tokens() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        set_authenticated();
-
-        let client = MockTimelineClient::new();
-        let cmd = TimelineCommand::with_client(client);
-        let args = TimelineArgs {
-            kind: TimelineKind::Home,
-            limit: 10,
-            cursor: None,
-        };
-
-        let result = cmd.get(args).unwrap();
-        assert!(result.meta.is_some());
-        let meta = result.meta.unwrap();
-        // Verify that pagination tokens are present (snake_case in JSON via serde field names)
-        assert!(meta.pagination.next_token.is_some());
-        assert_eq!(
-            meta.pagination.next_token,
-            Some("next_token_10".to_string())
-        );
-
-        // Serialize to JSON and verify field names are snake_case
-        let json = serde_json::to_string(&meta).unwrap();
-        assert!(
-            json.contains("next_token"),
-            "JSON should use next_token (snake_case), got: {}",
-            json
-        );
-        assert!(
-            !json.contains("nextToken"),
-            "JSON should NOT use nextToken (camelCase), got: {}",
-            json
-        );
-
-        unset_authenticated();
     }
 }

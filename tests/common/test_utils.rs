@@ -1,6 +1,6 @@
 /// Test utilities for coordinating test execution and creating test fixtures
 pub mod search_fixtures {
-    use crate::search::models::{SearchTweet, SearchUser};
+    use xcom_rs::search::models::{SearchTweet, SearchUser};
 
     /// Create sample tweet fixtures for search tests
     pub fn create_tweet_fixtures(count: usize) -> Vec<SearchTweet> {
@@ -30,7 +30,7 @@ pub mod search_fixtures {
 }
 
 pub mod media_fixtures {
-    use crate::media::models::UploadResult;
+    use xcom_rs::media::models::UploadResult;
 
     /// Fixed media ID used across unit tests
     pub const FIXTURE_MEDIA_ID: &str = "fixture_media_id_0000000000000001";
@@ -58,7 +58,7 @@ pub mod env_lock {
 
 /// Mock fixtures for engagement operations (like/retweet/bookmarks)
 pub mod engagement_fixtures {
-    use crate::tweets::models::Tweet;
+    use xcom_rs::tweets::models::Tweet;
 
     /// Create a fixture tweet for testing
     pub fn mock_tweet(id: &str) -> Tweet {
@@ -146,14 +146,14 @@ pub mod helpers {
     }
 
     /// Creates a test IdempotencyLedger with an in-memory database
-    pub fn create_test_ledger() -> crate::tweets::IdempotencyLedger {
-        crate::tweets::IdempotencyLedger::new(None)
+    pub fn create_test_ledger() -> xcom_rs::tweets::IdempotencyLedger {
+        xcom_rs::tweets::IdempotencyLedger::new(None)
             .expect("Failed to create test IdempotencyLedger")
     }
 
     /// Creates a test IdempotencyLedger with a file-based database
-    pub fn create_test_ledger_with_db(db_path: &Path) -> crate::tweets::IdempotencyLedger {
-        crate::tweets::IdempotencyLedger::new(Some(db_path))
+    pub fn create_test_ledger_with_db(db_path: &Path) -> xcom_rs::tweets::IdempotencyLedger {
+        xcom_rs::tweets::IdempotencyLedger::new(Some(db_path))
             .expect("Failed to create test IdempotencyLedger with database")
     }
 

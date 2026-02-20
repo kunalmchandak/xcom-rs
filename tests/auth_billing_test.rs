@@ -1,12 +1,21 @@
 /// Integration tests for auth and billing functionality
 /// These tests verify the requirements from tasks.md without network dependencies
+mod common;
+
+use common::test_utils::helpers::{assert_error_json, assert_success_json};
 use std::process::Command;
-use xcom_rs::test_utils::helpers::{assert_error_json, assert_success_json};
 
 #[test]
 fn test_auth_status_unauthenticated_fixture() {
     // Task 1: Verify auth status returns authenticated=false and nextSteps for unauthenticated state
+    // Use a temporary directory to ensure no local auth state interferes
+    let test_dir = std::env::temp_dir().join(format!("xcom-rs-auth-test-{}", std::process::id()));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+
     let output = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .env("XDG_CONFIG_HOME", test_dir.join(".config"))
+        .env("XDG_DATA_HOME", test_dir.join(".local/share"))
         .env_remove("XCOM_RS_BEARER_TOKEN")
         .args(["run", "--", "auth", "status", "--output", "json"])
         .output()
@@ -36,6 +45,9 @@ fn test_auth_status_unauthenticated_fixture() {
             .any(|s| s.as_str().unwrap().contains("XCOM_RS_BEARER_TOKEN")),
         "nextSteps should mention XCOM_RS_BEARER_TOKEN"
     );
+
+    // Cleanup
+    std::fs::remove_dir_all(&test_dir).ok();
 }
 
 #[test]
@@ -163,14 +175,23 @@ fn test_max_cost_credits_guard() {
 #[test]
 fn test_budget_daily_credits_tracking() {
     // Task 6: Verify --budget-daily-credits blocks when daily budget is exceeded
-    // Create a temporary test directory to avoid conflicts
-    let test_dir = std::env::temp_dir().join(format!("xcom-rs-budget-test-{}", std::process::id()));
+    // Create a unique temporary test directory to avoid conflicts between parallel test runs
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    let test_dir = std::env::temp_dir().join(format!(
+        "xcom-rs-budget-test-{}-{}",
+        std::process::id(),
+        nanos
+    ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
-    std::env::set_var("HOME", &test_dir);
 
     // Step 1: Run a command with budget tracking that should succeed (within budget)
     let output1 = Command::new("cargo")
         .env("HOME", &test_dir)
+        .env("XDG_DATA_HOME", test_dir.join(".local/share"))
         .args([
             "run",
             "--",
@@ -196,6 +217,7 @@ fn test_budget_daily_credits_tracking() {
     // Let's run with a very low budget to trigger the limit
     let output2 = Command::new("cargo")
         .env("HOME", &test_dir)
+        .env("XDG_DATA_HOME", test_dir.join(".local/share"))
         .args([
             "run",
             "--",
@@ -262,12 +284,22 @@ fn test_dry_run_zero_cost() {
 #[test]
 fn test_billing_report_returns_today_usage() {
     // Verify billing report returns actual today_usage from BudgetTracker
-    let test_dir = std::env::temp_dir().join(format!("xcom-rs-report-test-{}", std::process::id()));
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    let test_dir = std::env::temp_dir().join(format!(
+        "xcom-rs-report-test-{}-{}",
+        std::process::id(),
+        nanos
+    ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
 
     // Step 1: Run an estimate to record usage
     let output1 = Command::new("cargo")
         .env("HOME", &test_dir)
+        .env("XDG_DATA_HOME", test_dir.join(".local/share"))
         .args([
             "run",
             "--",
@@ -292,6 +324,7 @@ fn test_billing_report_returns_today_usage() {
     // Step 2: Run billing report to verify it returns the used credits
     let output2 = Command::new("cargo")
         .env("HOME", &test_dir)
+        .env("XDG_DATA_HOME", test_dir.join(".local/share"))
         .args([
             "run",
             "--",
