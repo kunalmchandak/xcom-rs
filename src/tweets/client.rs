@@ -3,7 +3,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use super::commands::types::{ListArgs, ListResult};
+use super::commands::types::{ClassifiedError, ListArgs, ListResult};
 use super::models::{ConversationEdge, ConversationResult, Tweet};
 use crate::x_api::XApiClient;
 
@@ -105,11 +105,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
         let response: Result<CreateTweetResponse, _> = self.client.post("/2/tweets", &request);
         match response {
             Ok(resp) => Ok(resp.data),
-            Err(error_details) => Err(anyhow::anyhow!(
-                "{:?}: {}",
-                error_details.code,
-                error_details.message
-            )),
+            Err(error_details) => Err(ClassifiedError::from_error_details(&error_details).into()),
         }
     }
 
@@ -121,11 +117,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
         let response: Result<GetTweetResponse, _> = self.client.get(&path);
         match response {
             Ok(resp) => Ok(resp.data),
-            Err(error_details) => Err(anyhow::anyhow!(
-                "{:?}: {}",
-                error_details.code,
-                error_details.message
-            )),
+            Err(error_details) => Err(ClassifiedError::from_error_details(&error_details).into()),
         }
     }
 
@@ -138,11 +130,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
         let response: Result<SearchTweetsResponse, _> = self.client.get(&path);
         match response {
             Ok(resp) => Ok(resp.data),
-            Err(error_details) => Err(anyhow::anyhow!(
-                "{:?}: {}",
-                error_details.code,
-                error_details.message
-            )),
+            Err(error_details) => Err(ClassifiedError::from_error_details(&error_details).into()),
         }
     }
 
@@ -157,11 +145,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
             match me_response {
                 Ok(resp) => resp.data.id,
                 Err(error_details) => {
-                    return Err(anyhow::anyhow!(
-                        "{:?}: {}",
-                        error_details.code,
-                        error_details.message
-                    ));
+                    return Err(ClassifiedError::from_error_details(&error_details).into());
                 }
             }
         };
@@ -208,11 +192,7 @@ impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
                     meta,
                 })
             }
-            Err(error_details) => Err(anyhow::anyhow!(
-                "{:?}: {}",
-                error_details.code,
-                error_details.message
-            )),
+            Err(error_details) => Err(ClassifiedError::from_error_details(&error_details).into()),
         }
     }
 }

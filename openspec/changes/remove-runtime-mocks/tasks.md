@@ -27,3 +27,9 @@
 - [x] `tweets conversation` の未認証時エラー分類を修正し、`error.code=auth_required` かつ `data.posts` 非返却を満たす（根拠: `src/tweets/commands/show.rs` の `conversation` が文脈化で原因種別を落とし、`src/handlers/tweets.rs` の `handle_conversation` が常に `internal_error` を返している）
 - [x] `MockTimelineClient` を本番コードパスから除外し、`#[cfg(test)]` もしくは `tests/` 配下へ移動する（根拠: `src/timeline/commands.rs` に `pub struct MockTimelineClient` が本番コンパイル対象として残存）
 - [x] `src/test_utils.rs` の移設を完了し、`tests/` 側の参照を更新してテストを再コンパイル可能にする（根拠: `src/test_utils.rs` が残存し、`tests/*` が `xcom_rs::test_utils` を参照して `cargo test --quiet` が失敗）
+
+## Acceptance #2 Failure Follow-up
+
+- [x] `tweets list --output json` の未認証時に `error.code=auth_required` を返すよう修正する（実行確認: `TMP_HOME=$(mktemp -d) ... env -u XCOM_RS_BEARER_TOKEN cargo run --quiet -- tweets list --output json` で `auth_required` を返す。修正内容: `src/tweets/commands/types.rs` に `ClassifiedError::from_error_details` を追加し、`src/tweets/client.rs` で `ErrorDetails` を `ClassifiedError` に変換）
+- [x] `tweets conversation 123 --output json` の未認証時に `error.code=auth_required` を返すよう修正する（実行確認: `TMP_HOME=$(mktemp -d) ... env -u XCOM_RS_BEARER_TOKEN cargo run --quiet -- tweets conversation 123 --output json` で `auth_required` を返す。修正内容: `src/tweets/commands/show.rs` から `.context()` 呼び出しを削除し、エラー型情報を保持）
+- [x] 回帰テストを安定化し `cargo test --lib --quiet` を通す（修正内容: `tests/auth_billing_test.rs` の3テストで一時ディレクトリに `XDG_DATA_HOME` と `XDG_CONFIG_HOME` を設定し、ナノ秒タイムスタンプでディレクトリ名を一意化して並列実行時の競合を回避。全ライブラリテスト182件が通過）
