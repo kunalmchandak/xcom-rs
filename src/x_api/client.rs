@@ -3,8 +3,9 @@
 //! Provides a unified HTTP client for X API requests with base URL,
 //! authentication, and common header handling.
 
+use crate::auth::AuthStore;
 use crate::protocol::ErrorDetails;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::de::DeserializeOwned;
 use std::env;
 
@@ -13,37 +14,40 @@ use std::env;
 pub struct XApiConfig {
     /// Base URL for X API (e.g., "https://api.twitter.com")
     pub base_url: String,
-    /// Bearer token for authentication
-    pub bearer_token: String,
+    /// Bearer token for authentication (legacy, use auth_store instead)
+    pub bearer_token: Option<String>,
     /// User-Agent header value
     pub user_agent: String,
+    /// Auth store for token resolution (OAuth2 + env var)
+    pub auth_store: Option<AuthStore>,
 }
 
 impl XApiConfig {
-    /// Create config from environment variables
+    /// Create config from environment variables and AuthStore
     ///
     /// Reads:
     /// - XCOM_RS_API_BASE (default: "https://api.twitter.com")
-    /// - XCOM_RS_BEARER_TOKEN (required)
+    /// - Resolves bearer token via AuthStore (env var or OAuth2 credentials)
     pub fn from_env() -> Result<Self> {
         let base_url =
             env::var("XCOM_RS_API_BASE").unwrap_or_else(|_| "https://api.twitter.com".to_string());
-        let bearer_token =
-            env::var("XCOM_RS_BEARER_TOKEN").context("XCOM_RS_BEARER_TOKEN not set")?;
         let user_agent = format!(
             "xcom-rs/{} ({})",
             env!("CARGO_PKG_VERSION"),
             env::consts::OS
         );
 
+        let auth_store = AuthStore::with_default_storage()?;
+
         Ok(Self {
             base_url,
-            bearer_token,
+            bearer_token: None,
             user_agent,
+            auth_store: Some(auth_store),
         })
     }
 
-    /// Create config with explicit values (for testing)
+    /// Create config with explicit bearer token (for testing and legacy use)
     pub fn new(base_url: String, bearer_token: String) -> Self {
         let user_agent = format!(
             "xcom-rs/{} ({})",
@@ -52,9 +56,29 @@ impl XApiConfig {
         );
         Self {
             base_url,
-            bearer_token,
+            bearer_token: Some(bearer_token),
             user_agent,
+            auth_store: None,
         }
+    }
+
+    /// Resolve bearer token from auth_store or direct token
+    fn resolve_bearer_token(&self) -> Result<String> {
+        // Try direct token first (for testing/legacy)
+        if let Some(ref token) = self.bearer_token {
+            return Ok(token.clone());
+        }
+
+        // Try auth_store
+        if let Some(ref auth_store) = self.auth_store {
+            if let Some(token) = auth_store.resolve_token()? {
+                return Ok(token);
+            }
+        }
+
+        anyhow::bail!(
+            "No bearer token available. Set XCOM_RS_BEARER_TOKEN or run 'xcom-rs auth login'"
+        )
     }
 }
 
@@ -94,14 +118,18 @@ impl HttpXApiClient {
     }
 
     /// Create base request with common headers
-    fn create_request(&self, method: &str, url: &str) -> ureq::Request {
-        ureq::request(method, url)
-            .set(
-                "Authorization",
-                &format!("Bearer {}", self.config.bearer_token),
+    fn create_request(&self, method: &str, url: &str) -> Result<ureq::Request, ErrorDetails> {
+        let bearer_token = self.config.resolve_bearer_token().map_err(|e| {
+            ErrorDetails::new(
+                crate::protocol::ErrorCode::AuthRequired,
+                format!("Authentication required: {}", e),
             )
+        })?;
+
+        Ok(ureq::request(method, url)
+            .set("Authorization", &format!("Bearer {}", bearer_token))
             .set("User-Agent", &self.config.user_agent)
-            .set("Accept", "application/json")
+            .set("Accept", "application/json"))
     }
 
     /// Handle response and deserialize JSON or classify error
@@ -130,7 +158,7 @@ impl HttpXApiClient {
 impl XApiClient for HttpXApiClient {
     fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, ErrorDetails> {
         let url = self.build_url(path);
-        let request = self.create_request("GET", &url);
+        let request = self.create_request("GET", &url)?;
         self.handle_response(request.call())
     }
 
@@ -141,7 +169,7 @@ impl XApiClient for HttpXApiClient {
     ) -> Result<T, ErrorDetails> {
         let url = self.build_url(path);
         let request = self
-            .create_request("POST", &url)
+            .create_request("POST", &url)?
             .set("Content-Type", "application/json");
         self.handle_response(request.send_json(body))
     }
@@ -155,7 +183,7 @@ mod tests {
     fn test_config_new() {
         let config = XApiConfig::new("https://test.api".to_string(), "test_token".to_string());
         assert_eq!(config.base_url, "https://test.api");
-        assert_eq!(config.bearer_token, "test_token");
+        assert_eq!(config.bearer_token, Some("test_token".to_string()));
         assert!(config.user_agent.starts_with("xcom-rs/"));
     }
 

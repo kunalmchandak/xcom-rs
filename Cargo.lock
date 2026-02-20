@@ -2018,6 +2018,7 @@ name = "xcom-rs"
 version = "0.1.32"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "clap_complete",
  "dirs",
@@ -2032,6 +2033,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ureq",
+ "url",
  "urlencoding",
  "uuid",
 ]

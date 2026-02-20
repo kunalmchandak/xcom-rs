@@ -312,6 +312,36 @@ pub enum BookmarksCommands {
 pub enum AuthCommands {
     /// Get current authentication status
     Status,
+
+    /// Login with OAuth2.0 Authorization Code + PKCE
+    Login {
+        /// Login method
+        #[arg(long, default_value = "local-server")]
+        method: LoginMethod,
+
+        /// OAuth2 scopes (space-separated)
+        #[arg(
+            long,
+            default_value = "tweet.read tweet.write users.read offline.access"
+        )]
+        scope: String,
+    },
+
+    /// Logout and optionally revoke access token
+    Logout {
+        /// Revoke the access token on the server
+        #[arg(long)]
+        revoke: bool,
+    },
+}
+
+/// Login method for OAuth2 flow
+#[derive(Clone, Debug, clap::ValueEnum)]
+pub enum LoginMethod {
+    /// Local HTTP server to receive callback (recommended)
+    LocalServer,
+    /// Manual copy-paste of redirect URL
+    Manual,
 }
 
 #[derive(Subcommand, Debug)]
