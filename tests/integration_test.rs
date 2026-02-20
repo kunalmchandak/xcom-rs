@@ -115,9 +115,9 @@ fn test_invalid_log_format() {
     // Get the binary path from cargo-provided environment variable
     let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
 
-    // Test with invalid --log-format value
+    // Test with invalid --log-format value (explicitly use --output json for JSON response)
     let output = Command::new(bin_path)
-        .args(["--log-format", "invalid", "commands"])
+        .args(["--output", "json", "--log-format", "invalid", "commands"])
         .output()
         .expect("Failed to execute command");
 
@@ -217,4 +217,155 @@ fn test_valid_log_format_text() {
 
     // With text format, stderr should be plain text (not JSON)
     // We just verify it doesn't crash
+}
+
+#[test]
+fn test_early_error_default_text_output() {
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
+
+    // Test with invalid --log-format value WITHOUT --output flag (should default to text)
+    let output = Command::new(bin_path)
+        .args(["--log-format", "invalid", "commands"])
+        .output()
+        .expect("Failed to execute command");
+
+    // Should exit with code 2 (InvalidArgument)
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Should exit with code 2 for invalid argument"
+    );
+
+    // Text format output goes to stderr
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("Error:"),
+        "Default early error output should be text format starting with 'Error:', got: {}",
+        stderr
+    );
+
+    // Verify it contains the error details
+    assert!(
+        stderr.contains("InvalidArgument") && stderr.contains("Invalid log format"),
+        "Error message should contain error code and details"
+    );
+
+    // Stdout should be empty for text format errors
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.is_empty(),
+        "Text format errors should not output to stdout"
+    );
+}
+
+#[test]
+fn test_invalid_output_value_fallback_to_text() {
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
+
+    // Test with invalid --output value (should fallback to text)
+    let output = Command::new(bin_path)
+        .args(["auth", "--output", "txt"])
+        .output()
+        .expect("Failed to execute command");
+
+    // Should exit with code 2 (InvalidArgument) for missing subcommand
+    assert_eq!(output.status.code(), Some(2), "Should exit with code 2");
+
+    // Text format output goes to stderr (invalid output value falls back to text default)
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("Error:"),
+        "Invalid --output value should fallback to text format, got: {}",
+        stderr
+    );
+
+    // Stdout should be empty for text format errors
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.is_empty(),
+        "Text format errors should not output to stdout"
+    );
+}
+
+#[test]
+fn test_early_error_missing_subcommand_text() {
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
+
+    // Test missing subcommand for 'auth' WITHOUT --output flag (should default to text)
+    let output = Command::new(bin_path)
+        .args(["auth"])
+        .output()
+        .expect("Failed to execute command");
+
+    // Should exit with code 2 (InvalidArgument)
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Should exit with code 2 for missing subcommand"
+    );
+
+    // Text format output goes to stderr
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("Error:"),
+        "Missing subcommand error should be text format starting with 'Error:', got: {}",
+        stderr
+    );
+
+    // Verify error mentions auth and contains usage information
+    assert!(
+        stderr.contains("Authentication") || stderr.contains("Usage:"),
+        "Error message should mention authentication or usage information, got: {}",
+        stderr
+    );
+
+    // Stdout should be empty for text format errors
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.is_empty(),
+        "Text format errors should not output to stdout"
+    );
+}
+
+#[test]
+fn test_early_error_missing_subcommand_json() {
+    // Get the binary path from cargo-provided environment variable
+    let bin_path = env!("CARGO_BIN_EXE_xcom-rs");
+
+    // Test missing subcommand for 'auth' WITH --output json (should respect explicit format)
+    let output = Command::new(bin_path)
+        .args(["auth", "--output", "json"])
+        .output()
+        .expect("Failed to execute command");
+
+    // Should exit with code 2 (InvalidArgument)
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Should exit with code 2 for missing subcommand"
+    );
+
+    // Parse JSON output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("Should return valid JSON when --output json is specified");
+
+    // Verify error structure
+    assert_eq!(json["ok"], false, "ok should be false");
+    assert_eq!(
+        json["error"]["code"], "invalid_argument",
+        "Should return invalid_argument error for missing subcommand"
+    );
+
+    // Verify error message mentions subcommand
+    let message = json["error"]["message"]
+        .as_str()
+        .expect("message should be a string");
+    assert!(
+        message.contains("requires a subcommand") || message.contains("subcommand"),
+        "Error message should mention missing subcommand"
+    );
 }
