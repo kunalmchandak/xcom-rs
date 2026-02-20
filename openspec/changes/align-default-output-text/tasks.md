@@ -9,3 +9,7 @@
 - [x] 2.2 既定 `text` の早期エラーを検証するテストを追加する（確認: `cargo test early_output_default_text` などの新規テストが成功）。
 - [x] 2.3 `xcom-rs auth` のサブコマンド不足が `text` で出力されることを検証するテストを追加する（確認: `cargo test early_output_missing_subcommand` などの新規テストが成功）。
 - [x] 2.4 `xcom-rs auth --output txt` の不正値が text で返ることを検証するテストを追加する（確認: `cargo test early_output_invalid_output_value` などの新規テストが成功）。
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `openspec/changes/align-default-output-text/specs/cli-core/spec.md` の「不正な出力形式の早期エラー」（JSON Envelope）と実装・テストの不整合を解消する。JSON を正とするなら `src/main.rs` の早期 `--output` 判定を修正し、`tests/integration_test.rs` の `test_invalid_output_value_fallback_to_text` を JSON 期待へ更新する。text を正とするなら spec を text 期待へ修正する。

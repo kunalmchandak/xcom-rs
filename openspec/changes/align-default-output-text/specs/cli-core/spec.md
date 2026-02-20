@@ -25,5 +25,5 @@
 #### Scenario: 不正な出力形式の早期エラー
 - **Given** 利用者が `xcom-rs auth --output txt` を実行したとき
 - **When** CLI がエラーを返すとき
-- **Then** エラーは JSON の `Envelope` 形式で出力される
+- **Then** 不正な `--output` 値は既定の `text` にフォールバックし、エラーは `text` 形式で出力される
 - **And** CLI は終了コード `2` を返す
