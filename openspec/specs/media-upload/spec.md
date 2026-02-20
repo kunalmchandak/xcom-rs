@@ -4,12 +4,12 @@
 メディアアップロードを追加する。
 ## Requirements
 ### Requirement: メディアアップロードコマンドの提供
-`xcom-rs` は `media upload` 実行時にX APIへメディアアップロードを送信しなければならない（MUST）。
+`xcom-rs` は `media upload` 実行時に、解決された認証方式(Bearer または OAuth1.0a)でX APIへメディアアップロードを送信しなければならない（MUST）。
 
-#### Scenario: 実APIアップロード成功
-- **Given** 利用者が `media upload ./image.png --output json` を実行する
-- **When** CLIがAPIにアップロードする
-- **Then** APIが返す `media_id` が `data.media_id` に反映される
+#### Scenario: OAuth1.0a でのアップロード
+- **Given** OAuth1.0a の認証情報が解決されている
+- **When** CLIがメディアアップロードを送信する
+- **Then** `Authorization: OAuth ...` ヘッダが付与される
 
 ### Requirement: 不正パスの検出
 `xcom-rs` は存在しないパスの指定を検出し、失敗を返さなければならない（MUST）。
