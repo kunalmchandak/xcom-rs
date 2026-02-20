@@ -280,31 +280,18 @@ fn handle_logout(
                     }
                 }
                 crate::auth::models::AuthCredentials::OAuth1a(oauth1a_creds) => {
-                    let consumer_key = std::env::var("XCOM_RS_OAUTH1A_CONSUMER_KEY")
-                        .unwrap_or_else(|_| {
-                            eprintln!(
-                                "Warning: XCOM_RS_OAUTH1A_CONSUMER_KEY not set, skipping revocation"
-                            );
-                            String::new()
-                        });
-                    let consumer_secret =
-                        std::env::var("XCOM_RS_OAUTH1A_CONSUMER_SECRET").unwrap_or_else(|_| {
-                            eprintln!(
-                                "Warning: XCOM_RS_OAUTH1A_CONSUMER_SECRET not set, skipping revocation"
-                            );
-                            String::new()
-                        });
+                    // Use stored consumer key/secret from credentials
+                    let client = OAuth1aClient::new(
+                        oauth1a_creds.consumer_key.clone(),
+                        oauth1a_creds.consumer_secret.clone(),
+                    );
 
-                    if !consumer_key.is_empty() && !consumer_secret.is_empty() {
-                        let client = OAuth1aClient::new(consumer_key, consumer_secret);
-
-                        tracing::info!("Revoking OAuth1.0a access token");
-                        if let Err(e) = client.invalidate_token(
-                            &oauth1a_creds.access_token,
-                            &oauth1a_creds.access_token_secret,
-                        ) {
-                            eprintln!("Warning: Failed to revoke OAuth1.0a token: {}", e);
-                        }
+                    tracing::info!("Revoking OAuth1.0a access token");
+                    if let Err(e) = client.invalidate_token(
+                        &oauth1a_creds.access_token,
+                        &oauth1a_creds.access_token_secret,
+                    ) {
+                        eprintln!("Warning: Failed to revoke OAuth1.0a token: {}", e);
                     }
                 }
             }

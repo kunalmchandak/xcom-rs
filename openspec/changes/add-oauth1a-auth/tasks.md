@@ -20,3 +20,7 @@
 - [x] `src/x_api/client.rs` の `XApiConfig`/`HttpXApiClient::create_request()` を修正し、`AuthStore::resolve_oauth1a_credentials()` が解決できる場合は `Authorization: OAuth ...` を付与し、Bearer と排他的に切り替える
 - [x] `src/media/commands.rs` の `XMediaClient::upload_bytes()` を修正し、Bearer 固定ではなく OAuth1.0a 認証解決と署名ヘッダ付与に対応させる(`src/handlers/media.rs` の実行フローから実際に使われるように統合)
 - [x] `src/auth/oauth1a.rs` の `OAuth1aClient::generate_auth_header()` を実行フローで使用するよう接続し、X API クライアントと media upload の OAuth1.0a ヘッダ送信を検証するテストを追加する
+
+## Acceptance #2 Failure Follow-up
+
+- [x] `src/handlers/auth.rs` の `handle_logout()` で OAuth1.0a revoke 時に `XCOM_RS_OAUTH1A_CONSUMER_KEY` / `XCOM_RS_OAUTH1A_CONSUMER_SECRET` を必須にせず、保存済み `oauth1a_creds.consumer_key` / `oauth1a_creds.consumer_secret` を使って `OAuth1aClient::invalidate_token()` を呼ぶよう修正する（現状は環境変数未設定だと `oauth/invalidate_token` を呼ばず、spec の MUST を満たさない）
