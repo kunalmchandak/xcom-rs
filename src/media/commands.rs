@@ -42,6 +42,7 @@ impl MediaClient for StubMediaClient {
 /// Real X API media client
 pub struct XMediaClient {
     base_url: String,
+    auth_store: Option<crate::auth::AuthStore>,
 }
 
 impl XMediaClient {
@@ -49,12 +50,24 @@ impl XMediaClient {
     pub fn new() -> Self {
         Self {
             base_url: "https://upload.x.com".to_string(),
+            auth_store: crate::auth::AuthStore::with_default_storage().ok(),
         }
     }
 
     /// Create a client with a custom base URL (for testing)
     pub fn with_base_url(base_url: String) -> Self {
-        Self { base_url }
+        Self {
+            base_url,
+            auth_store: crate::auth::AuthStore::with_default_storage().ok(),
+        }
+    }
+
+    /// Create a client with custom auth_store (for testing)
+    pub fn with_auth_store(base_url: String, auth_store: Option<crate::auth::AuthStore>) -> Self {
+        Self {
+            base_url,
+            auth_store,
+        }
     }
 
     /// Get bearer token from environment
@@ -66,6 +79,14 @@ impl XMediaClient {
             .or_else(|| std::env::var("XCOM_RS_BEARER_TOKEN").ok())
             .context("Failed to parse bearer token")
     }
+
+    /// Resolve OAuth1.0a credentials from auth_store
+    fn resolve_oauth1a_credentials(&self) -> Result<Option<crate::auth::OAuth1aCredentials>> {
+        if let Some(ref auth_store) = self.auth_store {
+            return auth_store.resolve_oauth1a_credentials();
+        }
+        Ok(None)
+    }
 }
 
 impl Default for XMediaClient {
@@ -76,7 +97,6 @@ impl Default for XMediaClient {
 
 impl MediaClient for XMediaClient {
     fn upload_bytes(&self, data: &[u8], mime_type: &str) -> Result<String> {
-        let token = self.get_bearer_token()?;
         let url = format!("{}/2/media/upload", self.base_url);
 
         // Create multipart form data manually
@@ -95,10 +115,35 @@ impl MediaClient for XMediaClient {
 
         let content_type = format!("multipart/form-data; boundary={}", boundary);
 
-        let response = ureq::post(&url)
-            .set("Authorization", &format!("Bearer {}", token))
-            .set("Content-Type", &content_type)
-            .send_bytes(&body);
+        let mut request = ureq::post(&url).set("Content-Type", &content_type);
+
+        // Try OAuth1.0a first (priority 1)
+        if let Ok(Some(oauth1a_creds)) = self.resolve_oauth1a_credentials() {
+            let client = crate::auth::OAuth1aClient::new(
+                oauth1a_creds.consumer_key.clone(),
+                oauth1a_creds.consumer_secret.clone(),
+            );
+
+            // Generate OAuth1.0a authorization header
+            // Note: multipart/form-data body is NOT included in signature
+            let auth_header = client
+                .generate_auth_header(
+                    &url,
+                    "POST",
+                    &oauth1a_creds.access_token,
+                    &oauth1a_creds.access_token_secret,
+                    None,
+                )
+                .context("Failed to generate OAuth1.0a signature")?;
+
+            request = request.set("Authorization", &auth_header);
+        } else {
+            // Fall back to Bearer token (priority 2)
+            let token = self.get_bearer_token()?;
+            request = request.set("Authorization", &format!("Bearer {}", token));
+        }
+
+        let response = request.send_bytes(&body);
 
         match response {
             Ok(resp) => {
@@ -310,5 +355,64 @@ mod tests {
             mime_from_path(Path::new("unknown.bin")),
             "application/octet-stream"
         );
+    }
+
+    #[test]
+    fn test_xmedia_client_oauth1a_upload() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save original OAuth1.0a environment variables
+        let original_consumer_key = std::env::var("XCOM_RS_OAUTH1A_CONSUMER_KEY").ok();
+        let original_consumer_secret = std::env::var("XCOM_RS_OAUTH1A_CONSUMER_SECRET").ok();
+        let original_access_token = std::env::var("XCOM_RS_OAUTH1A_ACCESS_TOKEN").ok();
+        let original_access_token_secret =
+            std::env::var("XCOM_RS_OAUTH1A_ACCESS_TOKEN_SECRET").ok();
+
+        // Set OAuth1.0a credentials via environment
+        std::env::set_var("XCOM_RS_OAUTH1A_CONSUMER_KEY", "test_consumer_key");
+        std::env::set_var("XCOM_RS_OAUTH1A_CONSUMER_SECRET", "test_consumer_secret");
+        std::env::set_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN", "test_access_token");
+        std::env::set_var(
+            "XCOM_RS_OAUTH1A_ACCESS_TOKEN_SECRET",
+            "test_access_token_secret",
+        );
+
+        let mut mock_server = mockito::Server::new();
+        let _m = mock_server
+            .mock("POST", "/2/media/upload")
+            .match_header(
+                "authorization",
+                mockito::Matcher::Regex(r"^OAuth .*oauth_signature=.*".to_string()),
+            )
+            .with_status(200)
+            .with_body(r#"{"data":{"media_id":"test_media_123"}}"#)
+            .create();
+
+        let auth_store = crate::auth::AuthStore::new();
+        let client = XMediaClient::with_auth_store(mock_server.url(), Some(auth_store));
+
+        let result = client.upload_bytes(b"test image data", "image/jpeg");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "test_media_123");
+
+        // Restore original environment
+        match original_consumer_key {
+            Some(val) => std::env::set_var("XCOM_RS_OAUTH1A_CONSUMER_KEY", val),
+            None => std::env::remove_var("XCOM_RS_OAUTH1A_CONSUMER_KEY"),
+        }
+        match original_consumer_secret {
+            Some(val) => std::env::set_var("XCOM_RS_OAUTH1A_CONSUMER_SECRET", val),
+            None => std::env::remove_var("XCOM_RS_OAUTH1A_CONSUMER_SECRET"),
+        }
+        match original_access_token {
+            Some(val) => std::env::set_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN", val),
+            None => std::env::remove_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN"),
+        }
+        match original_access_token_secret {
+            Some(val) => std::env::set_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN_SECRET", val),
+            None => std::env::remove_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN_SECRET"),
+        }
     }
 }

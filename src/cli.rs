@@ -313,13 +313,17 @@ pub enum AuthCommands {
     /// Get current authentication status
     Status,
 
-    /// Login with OAuth2.0 Authorization Code + PKCE
+    /// Login with OAuth2.0 Authorization Code + PKCE or OAuth1.0a 3-legged flow
     Login {
+        /// Authentication mode (oauth2 or oauth1a)
+        #[arg(long, default_value = "oauth2")]
+        mode: AuthMode,
+
         /// Login method
         #[arg(long, default_value = "local-server")]
         method: LoginMethod,
 
-        /// OAuth2 scopes (space-separated)
+        /// OAuth2 scopes (space-separated, OAuth2 only)
         #[arg(
             long,
             default_value = "tweet.read tweet.write users.read offline.access"
@@ -333,6 +337,17 @@ pub enum AuthCommands {
         #[arg(long)]
         revoke: bool,
     },
+}
+
+/// Authentication mode
+#[derive(Clone, Debug, clap::ValueEnum, PartialEq)]
+pub enum AuthMode {
+    /// OAuth 2.0 Authorization Code + PKCE
+    #[value(name = "oauth2")]
+    OAuth2,
+    /// OAuth 1.0a 3-legged authentication
+    #[value(name = "oauth1a")]
+    OAuth1a,
 }
 
 /// Login method for OAuth2 flow
