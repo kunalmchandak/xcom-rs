@@ -7,7 +7,7 @@ READMEのQuick Startは、インストール・認証・doctor・代表操作の
 #### Scenario: Quick Startに必須ステップが記載される
 Given 利用者がREADMEのQuick Startを参照する
 When Quick Startの手順を確認する
-Then `xcom-rs auth import` と `xcom-rs doctor` と代表操作（例: `xcom-rs tweets create`）が順に記載される
+Then 環境変数設定（`XCOM_RS_BEARER_TOKEN`）と `xcom-rs auth status` と `xcom-rs doctor` と代表操作（例: `xcom-rs tweets create`）が順に記載される
 
 ### Requirement: READMEのFeaturesとdocs/examplesはCLI実装に整合する
 READMEのFeaturesとdocs/examplesは、現行CLIの主要コマンド群に整合していなければならない（MUST）。

@@ -312,19 +312,6 @@ pub enum BookmarksCommands {
 pub enum AuthCommands {
     /// Get current authentication status
     Status,
-
-    /// Export authentication data
-    Export,
-
-    /// Import authentication data
-    Import {
-        /// Authentication data to import
-        data: String,
-
-        /// Dry run mode - show what would be changed without saving
-        #[arg(long)]
-        dry_run: bool,
-    },
 }
 
 #[derive(Subcommand, Debug)]

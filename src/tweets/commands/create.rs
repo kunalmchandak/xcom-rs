@@ -113,7 +113,7 @@ mod tests {
     /// Characterization test: create generates a non-empty client_request_id
     #[test]
     fn test_create_generates_client_request_id() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
         std::env::remove_var("XCOM_RETRY_AFTER_MS");
 
@@ -131,7 +131,7 @@ mod tests {
     /// Characterization test: explicit client_request_id is preserved
     #[test]
     fn test_create_with_explicit_client_request_id() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
         std::env::remove_var("XCOM_RETRY_AFTER_MS");
 
@@ -148,7 +148,7 @@ mod tests {
     /// Characterization test: idempotency return policy returns cached result
     #[test]
     fn test_create_idempotency_return_policy() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
 
         let (ledger, _temp) = create_test_ledger();
@@ -169,7 +169,7 @@ mod tests {
     /// Characterization test: idempotency error policy rejects duplicate
     #[test]
     fn test_create_idempotency_error_policy() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
 
         let (ledger, _temp) = create_test_ledger();
@@ -189,7 +189,7 @@ mod tests {
     /// Characterization test: rate limit simulation returns ClassifiedError
     #[test]
     fn test_create_rate_limit_simulation() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("XCOM_SIMULATE_ERROR", "rate_limit");
         std::env::set_var("XCOM_RETRY_AFTER_MS", "5000");
 

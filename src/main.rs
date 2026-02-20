@@ -78,7 +78,7 @@ fn main() {
         tracing::info!("Running in non-interactive mode");
     }
 
-    let mut auth_store = AuthStore::with_default_storage().unwrap_or_else(|e| {
+    let auth_store = AuthStore::with_default_storage().unwrap_or_else(|e| {
         tracing::warn!(error = %e, "Failed to create persistent auth store, using in-memory store");
         AuthStore::new()
     });
@@ -101,7 +101,7 @@ fn main() {
             handlers::bookmarks::handle_bookmarks(command, &create_meta, output_format)
         }
         Commands::Auth { command } => {
-            handlers::auth::handle_auth(command, &mut auth_store, &create_meta, output_format)
+            handlers::auth::handle_auth(command, &auth_store, &create_meta, output_format)
         }
         Commands::Billing { command } => {
             handlers::billing::handle_billing(command, &ctx, &create_meta, output_format)

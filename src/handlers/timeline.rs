@@ -88,7 +88,7 @@ fn build_error_details(e: &TimelineError) -> ErrorDetails {
     match e {
         TimelineError::AuthRequired => ErrorDetails::auth_required(
             e.to_string(),
-            vec!["Run 'xcom-rs auth login' to authenticate.".to_string()],
+            vec!["Set XCOM_RS_BEARER_TOKEN and re-run the command".to_string()],
         ),
         TimelineError::ApiError(classified) => {
             if let Some(retry_after_ms) = classified.retry_after_ms {

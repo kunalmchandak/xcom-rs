@@ -25,10 +25,6 @@ pub struct DoctorDiagnostics {
     #[serde(rename = "authStatus")]
     pub auth_status: AuthStatus,
 
-    /// Authentication storage path resolution (if file-based)
-    #[serde(rename = "authStoragePath", skip_serializing_if = "Option::is_none")]
-    pub auth_storage_path: Option<PathInfo>,
-
     /// Budget tracker storage path resolution
     #[serde(rename = "budgetStoragePath", skip_serializing_if = "Option::is_none")]
     pub budget_storage_path: Option<PathInfo>,
@@ -269,33 +265,34 @@ pub fn collect_diagnostics(
 
     // Scope check
     let scope_check = if auth_status.authenticated {
-        let granted = auth_status.scopes.clone().unwrap_or_default();
-        let check = ScopeCheck::evaluate(&granted);
-        if !check.ok {
-            warnings.push(format!(
-                "Missing required OAuth scopes: {}",
-                check.missing_scopes.join(", ")
-            ));
-            next_steps
-                .push("Re-authenticate with the required scopes: xcom-rs auth ...".to_string());
-            next_steps.push(format!(
-                "Missing scopes: {}",
-                check.missing_scopes.join(", ")
-            ));
+        // Check if scopes are provided; if not, skip scope diagnostics
+        if let Some(granted_scopes) = auth_status.scopes.clone() {
+            let check = ScopeCheck::evaluate(&granted_scopes);
+            if !check.ok {
+                warnings.push(format!(
+                    "Missing required OAuth scopes: {}",
+                    check.missing_scopes.join(", ")
+                ));
+                next_steps.push("Re-authenticate with the required scopes".to_string());
+                next_steps.push(format!(
+                    "Missing scopes: {}",
+                    check.missing_scopes.join(", ")
+                ));
+            }
+            check
+        } else {
+            // XCOM_RS_SCOPES not set; skip scope diagnostics
+            warnings.push("XCOM_RS_SCOPES not set; scope diagnostics skipped".to_string());
+            next_steps.push("Set XCOM_RS_SCOPES to enable scope diagnostics".to_string());
+            ScopeCheck {
+                ok: false,
+                granted_scopes: vec![],
+                missing_scopes: vec![],
+            }
         }
-        check
     } else {
-        next_steps.push("Authenticate first: xcom-rs auth ...".to_string());
+        next_steps.push("Set XCOM_RS_BEARER_TOKEN and re-run the command".to_string());
         ScopeCheck::unauthenticated()
-    };
-
-    // Try to get auth storage path
-    let auth_storage_path = match AuthStore::default_storage_path() {
-        Ok(path) => Some(PathInfo::from_path(path)),
-        Err(e) => {
-            warnings.push(format!("Failed to resolve auth storage path: {}", e));
-            None
-        }
     };
 
     // Try to get budget tracker storage path
@@ -336,7 +333,6 @@ pub fn collect_diagnostics(
 
     Ok(DoctorDiagnostics {
         auth_status,
-        auth_storage_path,
         budget_storage_path,
         execution_mode,
         scope_check,
@@ -357,7 +353,6 @@ pub fn collect_diagnostics(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::AuthToken;
 
     // ---------------------------------------------------------------------------
     // Mock prober for testing
@@ -449,6 +444,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_unauthenticated_no_probe() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("XCOM_RS_BEARER_TOKEN");
+
         let auth_store = AuthStore::new();
         let ctx = ExecutionContext::new(false, None, None, None, false);
         let result = collect_diagnostics(&auth_store, &ctx, None);
@@ -460,9 +458,12 @@ mod tests {
         // Probe not requested → status is "skipped"
         assert_eq!(diagnostics.api_probe.status, ProbeStatus::Skipped);
         assert_eq!(diagnostics.api_probe.duration_ms, 0);
-        // next_steps should include probe hint
+        // next_steps should include probe hint and auth setup
         let next_steps = diagnostics.next_steps.unwrap_or_default();
         assert!(next_steps.iter().any(|s| s.contains("--probe")));
+        assert!(next_steps
+            .iter()
+            .any(|s| s.contains("XCOM_RS_BEARER_TOKEN")));
         // Scope check shows all missing
         assert!(!diagnostics.scope_check.ok);
         assert_eq!(
@@ -473,16 +474,12 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_authenticated_full_scopes_no_probe() {
-        let mut auth_store = AuthStore::new();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
         let scopes: Vec<String> = REQUIRED_SCOPES.iter().map(|&s| s.to_string()).collect();
-        let token = AuthToken {
-            access_token: "test_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes,
-        };
-        auth_store.set_token(token);
+        std::env::set_var("XCOM_RS_SCOPES", scopes.join(" "));
 
+        let auth_store = AuthStore::new();
         let ctx = ExecutionContext::new(true, Some("trace-123".to_string()), Some(50), None, true);
         let result = collect_diagnostics(&auth_store, &ctx, None);
         assert!(result.is_ok());
@@ -500,15 +497,11 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_authenticated_missing_scopes() {
-        let mut auth_store = AuthStore::new();
-        let token = AuthToken {
-            access_token: "test_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["tweet.read".to_string()],
-        };
-        auth_store.set_token(token);
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+        std::env::set_var("XCOM_RS_SCOPES", "tweet.read");
 
+        let auth_store = AuthStore::new();
         let ctx = ExecutionContext::new(false, None, None, None, false);
         let result = collect_diagnostics(&auth_store, &ctx, None);
         assert!(result.is_ok());
@@ -525,6 +518,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_with_probe_success() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("XCOM_RS_BEARER_TOKEN");
+
         let auth_store = AuthStore::new();
         let ctx = ExecutionContext::new(false, None, None, None, false);
         let prober = MockProber::ok();
@@ -540,6 +536,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_with_probe_failure() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("XCOM_RS_BEARER_TOKEN");
+
         let auth_store = AuthStore::new();
         let ctx = ExecutionContext::new(false, None, None, None, false);
         let prober = MockProber::failed("connection refused");
@@ -558,6 +557,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_skipped_probe_returns_skipped_status() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("XCOM_RS_BEARER_TOKEN");
+
         // Passing None means probe is skipped; api_probe is always present with status=skipped
         let auth_store = AuthStore::new();
         let ctx = ExecutionContext::new(false, None, None, None, false);

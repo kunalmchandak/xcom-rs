@@ -99,7 +99,7 @@ mod tests {
     /// Characterization test: like returns success with matching tweet_id
     #[test]
     fn test_like_tweet() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
 
         let args = EngagementArgs {
@@ -113,7 +113,7 @@ mod tests {
     /// Characterization test: unlike returns success with matching tweet_id
     #[test]
     fn test_unlike_tweet() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
 
         let args = EngagementArgs {
@@ -127,7 +127,7 @@ mod tests {
     /// Characterization test: retweet returns success with matching tweet_id
     #[test]
     fn test_retweet() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
 
         let args = EngagementArgs {
@@ -141,7 +141,7 @@ mod tests {
     /// Characterization test: unretweet returns success with matching tweet_id
     #[test]
     fn test_unretweet() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
 
         let args = EngagementArgs {
@@ -155,7 +155,7 @@ mod tests {
     /// Characterization test: like with rate_limit simulation returns ClassifiedError 429
     #[test]
     fn test_like_rate_limit_simulation() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("XCOM_SIMULATE_ERROR", "rate_limit");
         std::env::set_var("XCOM_RETRY_AFTER_MS", "5000");
 

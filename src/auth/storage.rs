@@ -1,266 +1,134 @@
 use anyhow::Result;
-use std::path::PathBuf;
 
-use super::models::{AuthStatus, AuthToken, ImportAction, ImportPlan};
+use super::models::AuthStatus;
 
-/// Compare two JSON strings for equality by parsing and re-serializing
-/// This handles key ordering differences
-fn json_content_equal(json1: &str, json2: &str) -> bool {
-    match (
-        serde_json::from_str::<serde_json::Value>(json1),
-        serde_json::from_str::<serde_json::Value>(json2),
-    ) {
-        (Ok(v1), Ok(v2)) => v1 == v2,
-        _ => false, // If parsing fails, treat as different
-    }
-}
-
-/// In-memory auth store for testing/stub implementation
+/// Environment-based auth store
+/// Reads authentication state from environment variables only.
 #[derive(Debug, Clone)]
 pub struct AuthStore {
-    token: Option<AuthToken>,
-    storage_path: Option<PathBuf>,
+    // No persistent state; purely environment-driven
 }
 
 impl AuthStore {
-    /// Create a new empty auth store
+    /// Create a new auth store (environment-driven)
     pub fn new() -> Self {
-        Self {
-            token: None,
-            storage_path: None,
-        }
-    }
-
-    /// Create an auth store with persistent storage at the given path
-    pub fn with_storage(path: PathBuf) -> Result<Self> {
-        let mut store = Self {
-            token: None,
-            storage_path: Some(path.clone()),
-        };
-
-        // Try to load existing token from storage
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(token) = serde_json::from_str::<AuthToken>(&content) {
-                    store.token = Some(token);
-                }
-            }
-        }
-
-        Ok(store)
-    }
-
-    /// Get default storage path: respects XDG_DATA_HOME, falls back to ~/.local/share/xcom-rs/auth.json
-    pub fn default_storage_path() -> Result<PathBuf> {
-        let data_dir = if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-            PathBuf::from(xdg_data).join("xcom-rs")
-        } else {
-            let home = std::env::var("HOME")
-                .or_else(|_| std::env::var("USERPROFILE"))
-                .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
-            PathBuf::from(home)
-                .join(".local")
-                .join("share")
-                .join("xcom-rs")
-        };
-        std::fs::create_dir_all(&data_dir)?;
-        Ok(data_dir.join("auth.json"))
+        Self {}
     }
 
     /// Create an auth store with default storage location
+    /// For env-only mode, this is equivalent to new()
     pub fn with_default_storage() -> Result<Self> {
-        Self::with_storage(Self::default_storage_path()?)
+        Ok(Self::new())
     }
 
-    /// Save the current token to persistent storage
-    /// Only writes if the content has changed (prevents unnecessary file modifications)
-    fn save_to_storage(&self) -> Result<()> {
-        if let Some(path) = &self.storage_path {
-            if let Some(token) = &self.token {
-                let new_json = serde_json::to_string_pretty(token)?;
+    /// Parse bearer token from environment variable
+    /// Accepts "Bearer <token>" or raw token format
+    fn parse_bearer_token(value: &str) -> String {
+        if let Some(stripped) = value.strip_prefix("Bearer ") {
+            stripped.to_string()
+        } else {
+            value.to_string()
+        }
+    }
 
-                // Check if file exists and compare content
-                let should_write = if path.exists() {
-                    match std::fs::read_to_string(path) {
-                        Ok(existing_json) => {
-                            // Compare normalized JSON to handle key ordering differences
-                            !json_content_equal(&existing_json, &new_json)
-                        }
-                        Err(_) => true, // If we can't read, write anyway
+    /// Parse scopes from environment variable
+    /// Supports space-separated and comma-separated formats
+    fn parse_scopes(value: &str) -> Vec<String> {
+        // Try comma-separated first
+        if value.contains(',') {
+            value
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            // Fall back to space-separated
+            value.split_whitespace().map(|s| s.to_string()).collect()
+        }
+    }
+
+    /// Get bearer token from environment
+    fn get_bearer_token() -> Option<String> {
+        std::env::var("XCOM_RS_BEARER_TOKEN")
+            .ok()
+            .map(|v| Self::parse_bearer_token(&v))
+    }
+
+    /// Get scopes from environment
+    fn get_scopes() -> Option<Vec<String>> {
+        std::env::var("XCOM_RS_SCOPES")
+            .ok()
+            .map(|v| Self::parse_scopes(&v))
+    }
+
+    /// Get expires_at from environment
+    /// Returns None if invalid or not set
+    fn get_expires_at() -> Option<i64> {
+        std::env::var("XCOM_RS_EXPIRES_AT")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+    }
+
+    /// Get current authentication status from environment variables
+    pub fn status(&self) -> AuthStatus {
+        // Check if bearer token is set
+        let _token = match Self::get_bearer_token() {
+            Some(t) if !t.is_empty() => t,
+            _ => {
+                return AuthStatus::unauthenticated(vec![
+                    "Set XCOM_RS_BEARER_TOKEN and re-run the command".to_string(),
+                ]);
+            }
+        };
+
+        // Check expiration if set
+        if let Some(expires_at) = Self::get_expires_at() {
+            match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(duration) => {
+                    let now = duration.as_secs() as i64;
+                    if now >= expires_at {
+                        return AuthStatus::unauthenticated(vec![
+                            "Verify XCOM_RS_EXPIRES_AT is not in the past".to_string(),
+                        ]);
                     }
-                } else {
-                    true // File doesn't exist, write it
-                };
+                }
+                Err(_) => {
+                    return AuthStatus::unauthenticated(vec![
+                        "System time error. Please check your system clock.".to_string(),
+                    ]);
+                }
+            }
+        }
 
-                if should_write {
-                    std::fs::write(path, new_json)?;
+        // Get scopes (optional)
+        let scopes = Self::get_scopes().unwrap_or_default();
+
+        AuthStatus::authenticated("bearer".to_string(), scopes)
+    }
+
+    /// Check if authenticated (based on environment variables)
+    pub fn is_authenticated(&self) -> bool {
+        Self::get_bearer_token().filter(|t| !t.is_empty()).is_some() && {
+            // Check expiration if set
+            if let Some(expires_at) = Self::get_expires_at() {
+                if let Ok(duration) =
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                {
+                    let now = duration.as_secs() as i64;
+                    now < expires_at
+                } else {
+                    false
                 }
             } else {
-                // If no token, delete the storage file
-                if path.exists() {
-                    std::fs::remove_file(path)?;
-                }
+                true
             }
         }
-        Ok(())
-    }
-
-    /// Get current authentication status
-    pub fn status(&self) -> AuthStatus {
-        match &self.token {
-            Some(token) => {
-                // Check if token is expired
-                if let Some(expires_at) = token.expires_at {
-                    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-                        Ok(duration) => {
-                            let now = duration.as_secs() as i64;
-                            if now >= expires_at {
-                                return AuthStatus::unauthenticated(vec![
-                                    "Token expired. Run 'xcom-rs auth login' to re-authenticate"
-                                        .to_string(),
-                                ]);
-                            }
-                        }
-                        Err(_) => {
-                            // System time is before UNIX_EPOCH - treat as unauthenticated
-                            return AuthStatus::unauthenticated(vec![
-                                "System time error. Please check your system clock.".to_string(),
-                            ]);
-                        }
-                    }
-                }
-                AuthStatus::authenticated("bearer".to_string(), token.scopes.clone())
-            }
-            None => AuthStatus::unauthenticated(vec![
-                "Not authenticated. Run 'xcom-rs auth login' to authenticate".to_string(),
-            ]),
-        }
-    }
-
-    /// Export authentication data (returns encrypted in real implementation)
-    pub fn export(&self) -> Result<String> {
-        let token = self
-            .token
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No authentication data to export"))?;
-
-        // In real implementation, this would encrypt the data
-        // For now, we use base64 encoding as a placeholder
-        let json = serde_json::to_string(token)?;
-        Ok(base64::encode(json))
-    }
-
-    /// Import authentication data (expects encrypted data in real implementation)
-    pub fn import(&mut self, data: &str) -> Result<()> {
-        // In real implementation, this would decrypt the data
-        // For now, we use base64 decoding as a placeholder
-        let json =
-            base64::decode(data).map_err(|e| anyhow::anyhow!("Invalid auth data format: {}", e))?;
-        let json_str = String::from_utf8(json)
-            .map_err(|e| anyhow::anyhow!("Invalid auth data encoding: {}", e))?;
-        let token: AuthToken = serde_json::from_str(&json_str)
-            .map_err(|e| anyhow::anyhow!("Invalid auth data structure: {}", e))?;
-
-        self.token = Some(token);
-        self.save_to_storage()?;
-        Ok(())
-    }
-
-    /// Import authentication data with dry-run support
-    /// Returns an ImportPlan describing what would happen
-    pub fn import_with_plan(&mut self, data: &str, dry_run: bool) -> Result<ImportPlan> {
-        // Validate and parse the data
-        let token = match self.validate_import_data(data) {
-            Ok(token) => token,
-            Err(e) => {
-                return Ok(ImportPlan::fail(e.to_string(), dry_run));
-            }
-        };
-
-        // Determine the action by comparing existing token with new token
-        let action = match &self.token {
-            None => ImportAction::Create,
-            Some(existing_token) => {
-                if existing_token == &token {
-                    ImportAction::Skip
-                } else {
-                    ImportAction::Update
-                }
-            }
-        };
-
-        // If Skip action, return early without saving
-        if action == ImportAction::Skip {
-            return Ok(ImportPlan::skip(
-                "Token is identical to existing token".to_string(),
-                dry_run,
-            ));
-        }
-
-        // If not dry-run, perform the actual import
-        if !dry_run {
-            self.token = Some(token);
-            if let Err(e) = self.save_to_storage() {
-                return Ok(ImportPlan::fail(format!("Failed to save: {}", e), dry_run));
-            }
-        }
-
-        // Return the plan
-        let plan = match action {
-            ImportAction::Create => ImportPlan::create(dry_run),
-            ImportAction::Update => ImportPlan::update(dry_run),
-            _ => unreachable!(),
-        };
-
-        Ok(plan)
-    }
-
-    /// Validate import data and return parsed token
-    fn validate_import_data(&self, data: &str) -> Result<AuthToken> {
-        let json =
-            base64::decode(data).map_err(|e| anyhow::anyhow!("Invalid auth data format: {}", e))?;
-        let json_str = String::from_utf8(json)
-            .map_err(|e| anyhow::anyhow!("Invalid auth data encoding: {}", e))?;
-        let token: AuthToken = serde_json::from_str(&json_str)
-            .map_err(|e| anyhow::anyhow!("Invalid auth data structure: {}", e))?;
-        Ok(token)
-    }
-
-    /// Set a token (for testing)
-    pub fn set_token(&mut self, token: AuthToken) {
-        self.token = Some(token);
-        let _ = self.save_to_storage(); // Ignore errors in test helper
-    }
-
-    /// Check if authenticated
-    pub fn is_authenticated(&self) -> bool {
-        self.status().authenticated
     }
 }
 
 impl Default for AuthStore {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-// Note: base64 crate is needed - add to Cargo.toml
-// For now, we'll implement a simple base64 encode/decode
-mod base64 {
-    use anyhow::Result;
-
-    pub fn encode(data: String) -> String {
-        // Simple base64 encoding using standard library would require adding dependency
-        // For stub implementation, we'll use a simple reversible encoding
-        format!("STUB_B64_{}", data)
-    }
-
-    pub fn decode(data: &str) -> Result<Vec<u8>> {
-        if let Some(stripped) = data.strip_prefix("STUB_B64_") {
-            Ok(stripped.as_bytes().to_vec())
-        } else {
-            Err(anyhow::anyhow!("Invalid base64 format"))
-        }
     }
 }
 
@@ -294,295 +162,218 @@ mod tests {
 
     #[test]
     fn test_auth_store_default_unauthenticated() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save original value
+        let original = std::env::var("XCOM_RS_BEARER_TOKEN").ok();
+        std::env::remove_var("XCOM_RS_BEARER_TOKEN");
+
         let store = AuthStore::new();
         let status = store.status();
         assert!(!status.authenticated);
         assert!(status.next_steps.is_some());
+
+        // Restore original value
+        if let Some(val) = original {
+            std::env::set_var("XCOM_RS_BEARER_TOKEN", val);
+        }
     }
 
     #[test]
     fn test_auth_store_with_token() {
-        let mut store = AuthStore::new();
-        let token = AuthToken {
-            access_token: "test_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["read".to_string()],
-        };
-        store.set_token(token);
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
+        // Save original values
+        let original_token = std::env::var("XCOM_RS_BEARER_TOKEN").ok();
+        let original_scopes = std::env::var("XCOM_RS_SCOPES").ok();
+
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+        std::env::set_var("XCOM_RS_SCOPES", "read");
+
+        let store = AuthStore::new();
         let status = store.status();
         assert!(status.authenticated);
         assert_eq!(status.auth_mode, Some("bearer".to_string()));
+        assert_eq!(status.scopes, Some(vec!["read".to_string()]));
+
+        // Restore original values
+        match original_token {
+            Some(val) => std::env::set_var("XCOM_RS_BEARER_TOKEN", val),
+            None => std::env::remove_var("XCOM_RS_BEARER_TOKEN"),
+        }
+        match original_scopes {
+            Some(val) => std::env::set_var("XCOM_RS_SCOPES", val),
+            None => std::env::remove_var("XCOM_RS_SCOPES"),
+        }
     }
 
     #[test]
-    fn test_auth_export_import() {
-        let mut store = AuthStore::new();
-        let token = AuthToken {
-            access_token: "test_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["read".to_string(), "write".to_string()],
-        };
-        store.set_token(token);
+    fn test_parse_bearer_token_with_prefix() {
+        let token = AuthStore::parse_bearer_token("Bearer test_token_123");
+        assert_eq!(token, "test_token_123");
+    }
 
-        // Export
-        let exported = store.export().unwrap();
-        assert!(!exported.is_empty());
+    #[test]
+    fn test_parse_bearer_token_without_prefix() {
+        let token = AuthStore::parse_bearer_token("test_token_456");
+        assert_eq!(token, "test_token_456");
+    }
 
-        // Import into new store
-        let mut new_store = AuthStore::new();
-        new_store.import(&exported).unwrap();
-
-        // Verify it matches
-        let status = new_store.status();
-        assert!(status.authenticated);
+    #[test]
+    fn test_parse_scopes_space_separated() {
+        let scopes = AuthStore::parse_scopes("read write delete");
         assert_eq!(
-            status.scopes,
-            Some(vec!["read".to_string(), "write".to_string()])
+            scopes,
+            vec![
+                "read".to_string(),
+                "write".to_string(),
+                "delete".to_string()
+            ]
         );
     }
 
     #[test]
-    fn test_export_without_token() {
-        let store = AuthStore::new();
-        let result = store.export();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_import_invalid_data() {
-        let mut store = AuthStore::new();
-        let result = store.import("invalid_data");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_import_plan_create() {
-        let mut store = AuthStore::new();
-        let token = AuthToken {
-            access_token: "test_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["read".to_string()],
-        };
-        let exported = base64::encode(serde_json::to_string(&token).unwrap());
-
-        let plan = store.import_with_plan(&exported, true).unwrap();
-        assert_eq!(plan.action, ImportAction::Create);
-        assert!(plan.dry_run);
-        assert!(plan.reason.is_none());
-
-        // Verify no token was set in dry-run
-        assert!(!store.is_authenticated());
-    }
-
-    #[test]
-    fn test_import_plan_update() {
-        let mut store = AuthStore::new();
-        let token1 = AuthToken {
-            access_token: "old_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["read".to_string()],
-        };
-        store.set_token(token1);
-
-        let token2 = AuthToken {
-            access_token: "new_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["write".to_string()],
-        };
-        let exported = base64::encode(serde_json::to_string(&token2).unwrap());
-
-        let plan = store.import_with_plan(&exported, true).unwrap();
-        assert_eq!(plan.action, ImportAction::Update);
-        assert!(plan.dry_run);
-
-        // Verify old token is still there in dry-run
+    fn test_parse_scopes_comma_separated() {
+        let scopes = AuthStore::parse_scopes("read, write, delete");
         assert_eq!(
-            store.token.as_ref().unwrap().access_token,
-            "old_token".to_string()
+            scopes,
+            vec![
+                "read".to_string(),
+                "write".to_string(),
+                "delete".to_string()
+            ]
         );
     }
 
     #[test]
-    fn test_import_plan_fail() {
-        let mut store = AuthStore::new();
-        let plan = store.import_with_plan("invalid_data", true).unwrap();
-        assert_eq!(plan.action, ImportAction::Fail);
-        assert!(plan.dry_run);
-        assert!(plan.reason.is_some());
-        assert!(plan.reason.unwrap().contains("Invalid"));
-    }
+    fn test_get_bearer_token_from_env() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
-    #[test]
-    fn test_import_plan_actual_import() {
-        let mut store = AuthStore::new();
-        let token = AuthToken {
-            access_token: "test_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["read".to_string()],
-        };
-        let exported = base64::encode(serde_json::to_string(&token).unwrap());
+        // Save original value
+        let original = std::env::var("XCOM_RS_BEARER_TOKEN").ok();
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "Bearer my_token");
 
-        let plan = store.import_with_plan(&exported, false).unwrap();
-        assert_eq!(plan.action, ImportAction::Create);
-        assert!(!plan.dry_run);
-
-        // Verify token was actually set
-        assert!(store.is_authenticated());
-        assert_eq!(
-            store.token.as_ref().unwrap().access_token,
-            "test_token".to_string()
-        );
-    }
-
-    #[test]
-    fn test_stable_writes_same_content() {
-        // Test that writing the same token twice doesn't modify the file
-        let test_dir =
-            std::env::temp_dir().join(format!("auth-stable-test-{}", std::process::id()));
-        std::fs::create_dir_all(&test_dir).unwrap();
-        let test_path = test_dir.join("auth.json");
-
-        let token = AuthToken {
-            access_token: "test_token".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["read".to_string()],
-        };
-
-        // Create store and save token
-        let mut store = AuthStore::with_storage(test_path.clone()).unwrap();
-        store.set_token(token.clone());
-
-        // Get first modification time
-        let metadata1 = std::fs::metadata(&test_path).unwrap();
-        let mtime1 = metadata1.modified().unwrap();
-
-        // Wait to ensure timestamp would change if file was rewritten
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        // Save the same token again
-        store.set_token(token);
-
-        // Get second modification time
-        let metadata2 = std::fs::metadata(&test_path).unwrap();
-        let mtime2 = metadata2.modified().unwrap();
-
-        // Timestamps should be identical
-        assert_eq!(
-            mtime1, mtime2,
-            "File should not be rewritten when content is identical"
-        );
-
-        // Cleanup
-        std::fs::remove_dir_all(&test_dir).ok();
-    }
-
-    #[test]
-    fn test_stable_writes_different_content() {
-        // Test that writing different tokens does modify the file
-        let test_dir = std::env::temp_dir().join(format!("auth-diff-test-{}", std::process::id()));
-        std::fs::create_dir_all(&test_dir).unwrap();
-        let test_path = test_dir.join("auth.json");
-
-        let token1 = AuthToken {
-            access_token: "test_token_1".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["read".to_string()],
-        };
-
-        let token2 = AuthToken {
-            access_token: "test_token_2".to_string(),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scopes: vec!["read".to_string()],
-        };
-
-        // Create store and save first token
-        let mut store = AuthStore::with_storage(test_path.clone()).unwrap();
-        store.set_token(token1);
-
-        // Get first modification time
-        let metadata1 = std::fs::metadata(&test_path).unwrap();
-        let mtime1 = metadata1.modified().unwrap();
-
-        // Wait to ensure timestamp would change
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        // Save a different token
-        store.set_token(token2);
-
-        // Get second modification time
-        let metadata2 = std::fs::metadata(&test_path).unwrap();
-        let mtime2 = metadata2.modified().unwrap();
-
-        // Timestamps should be different
-        assert_ne!(
-            mtime1, mtime2,
-            "File should be rewritten when content changes"
-        );
-
-        // Cleanup
-        std::fs::remove_dir_all(&test_dir).ok();
-    }
-
-    #[test]
-    fn test_default_storage_path_with_xdg_data_home() {
-        // Use a shared global mutex to prevent parallel test execution from interfering
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
-
-        // Save current value
-        let original = std::env::var("XDG_DATA_HOME").ok();
-
-        // Set XDG_DATA_HOME
-        let xdg_path = std::env::temp_dir().join(format!("test-xdg-data-{}", std::process::id()));
-        std::env::set_var("XDG_DATA_HOME", &xdg_path);
-
-        let path = AuthStore::default_storage_path();
+        let token = AuthStore::get_bearer_token();
+        assert_eq!(token, Some("my_token".to_string()));
 
         // Restore original value
         match original {
-            Some(val) => std::env::set_var("XDG_DATA_HOME", val),
-            None => std::env::remove_var("XDG_DATA_HOME"),
+            Some(val) => std::env::set_var("XCOM_RS_BEARER_TOKEN", val),
+            None => std::env::remove_var("XCOM_RS_BEARER_TOKEN"),
         }
-
-        assert!(path.is_ok());
-        let path = path.unwrap();
-        assert_eq!(path, xdg_path.join("xcom-rs").join("auth.json"));
     }
 
     #[test]
-    fn test_default_storage_path_without_xdg() {
-        // Use a shared global mutex to prevent parallel test execution from interfering
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap();
+    fn test_get_scopes_from_env() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
-        // Save current value
-        let original = std::env::var("XDG_DATA_HOME").ok();
+        // Save original value
+        let original = std::env::var("XCOM_RS_SCOPES").ok();
+        std::env::set_var("XCOM_RS_SCOPES", "read write");
 
-        // Ensure XDG_DATA_HOME is not set
-        std::env::remove_var("XDG_DATA_HOME");
+        let scopes = AuthStore::get_scopes();
+        assert_eq!(scopes, Some(vec!["read".to_string(), "write".to_string()]));
 
-        let path = AuthStore::default_storage_path();
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XCOM_RS_SCOPES", val),
+            None => std::env::remove_var("XCOM_RS_SCOPES"),
+        }
+    }
+
+    #[test]
+    fn test_get_expires_at_from_env() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save original value
+        let original = std::env::var("XCOM_RS_EXPIRES_AT").ok();
+        std::env::set_var("XCOM_RS_EXPIRES_AT", "1700000000");
+
+        let expires = AuthStore::get_expires_at();
+        assert_eq!(expires, Some(1700000000));
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XCOM_RS_EXPIRES_AT", val),
+            None => std::env::remove_var("XCOM_RS_EXPIRES_AT"),
+        }
+    }
+
+    #[test]
+    fn test_status_expired_token() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save original values
+        let original_token = std::env::var("XCOM_RS_BEARER_TOKEN").ok();
+        let original_expires = std::env::var("XCOM_RS_EXPIRES_AT").ok();
+
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+        std::env::set_var("XCOM_RS_EXPIRES_AT", "1"); // Very old timestamp
+
+        let store = AuthStore::new();
+        let status = store.status();
+        assert!(!status.authenticated);
+        assert!(status.next_steps.is_some());
+
+        // Restore original values
+        match original_token {
+            Some(val) => std::env::set_var("XCOM_RS_BEARER_TOKEN", val),
+            None => std::env::remove_var("XCOM_RS_BEARER_TOKEN"),
+        }
+        match original_expires {
+            Some(val) => std::env::set_var("XCOM_RS_EXPIRES_AT", val),
+            None => std::env::remove_var("XCOM_RS_EXPIRES_AT"),
+        }
+    }
+
+    #[test]
+    fn test_is_authenticated() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save original value and set test value
+        let original = std::env::var("XCOM_RS_BEARER_TOKEN").ok();
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
+
+        let store = AuthStore::new();
+        assert!(store.is_authenticated());
+
+        // Restore original value
+        match original {
+            Some(val) => std::env::set_var("XCOM_RS_BEARER_TOKEN", val),
+            None => std::env::remove_var("XCOM_RS_BEARER_TOKEN"),
+        }
+    }
+
+    #[test]
+    fn test_is_not_authenticated() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        // Save original value and remove for test
+        let original = std::env::var("XCOM_RS_BEARER_TOKEN").ok();
+        std::env::remove_var("XCOM_RS_BEARER_TOKEN");
+
+        let store = AuthStore::new();
+        assert!(!store.is_authenticated());
 
         // Restore original value
         if let Some(val) = original {
-            std::env::set_var("XDG_DATA_HOME", val);
+            std::env::set_var("XCOM_RS_BEARER_TOKEN", val);
         }
-
-        assert!(path.is_ok());
-        let path = path.unwrap();
-        // Should fall back to ~/.local/share/xcom-rs/auth.json
-        let expected_suffix = std::path::Path::new(".local")
-            .join("share")
-            .join("xcom-rs")
-            .join("auth.json");
-        assert!(path.ends_with(&expected_suffix));
     }
 }
