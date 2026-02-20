@@ -1,18 +1,14 @@
 # auth-import-planning Specification
 
 ## Purpose
-TBD - created by archiving change add-auth-import-dry-run. Update Purpose after archive.
+**DEPRECATED**: This specification is no longer applicable as `auth import/export` has been removed in favor of environment-variable-only authentication. Retained for historical reference.
+
 ## Requirements
-### Requirement: auth import の事前計画
-auth import は実行前計画を提供することが MUST である。
+### Requirement: Deprecated specification marker
+This specification SHALL remain as a deprecated marker to document the historical auth import/export functionality.
 
-#### Scenario: dry-runで保存が行われない
-Given `auth import --dry-run` が実行される
-When インポート対象が検証される
-Then 保存ファイルは変更されず、計画の要約が返る
-
-#### Scenario: 計画が機械可読で取得できる
-Given `--output json` が指定されている
-When `auth import --dry-run` が実行される
-Then 実行結果には変更計画の詳細が含まれる
+#### Scenario: Specification is marked as deprecated
+- **WHEN** users reference this specification
+- **THEN** they SHALL be directed to use environment-variable-only authentication via `XCOM_RS_BEARER_TOKEN`
+- **AND** historical context is preserved for reference
 

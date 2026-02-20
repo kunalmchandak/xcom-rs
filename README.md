@@ -16,7 +16,7 @@ supporting a human-readable text mode.
 - Timeline: `timeline home`, `timeline mentions`, `timeline user`
 - Media: `media upload`
 - Bookmarks: `bookmarks add`, `bookmarks remove`, `bookmarks list`
-- Auth and billing helpers (local state): `auth status`, `auth import`, `auth export`
+- Auth and billing helpers (local state): `auth status`
 - Diagnostics: `doctor` (with optional `--probe` for API connectivity check)
 - Embedded skill installer for agent toolchains (`install-skills`)
 
@@ -62,16 +62,21 @@ For development setup and Makefile workflows, see [CONTRIBUTING.md](CONTRIBUTING
 # 1. Install
 cargo install xcom-rs
 
-# 2. Authenticate — import a base64-encoded bearer token
-xcom-rs auth import "$XCOM_AUTH_DATA" --output json
+# 2. Set your bearer token as an environment variable
+export XCOM_RS_BEARER_TOKEN="your_bearer_token_here"
+# Optionally, set scopes for scope diagnostics
+export XCOM_RS_SCOPES="tweet.read tweet.write users.read"
 
-# 3. Verify setup with doctor
+# 3. Verify setup with auth status
+xcom-rs auth status --output json
+
+# 4. Verify setup with doctor
 xcom-rs doctor --output json
 
-# 4. Create your first tweet
+# 5. Create your first tweet
 xcom-rs tweets create "Hello from xcom-rs!" --output json
 
-# 5. Browse your home timeline
+# 6. Browse your home timeline
 xcom-rs timeline home --limit 5 --output json
 ```
 
@@ -89,8 +94,18 @@ xcom-rs timeline home --limit 5 --output json
 
 ### Authentication
 
-`xcom-rs` currently supports importing/exporting a bearer token for local use. OAuth login flows are
-not implemented yet.
+`xcom-rs` uses environment variables for authentication. Set the following environment variables:
+
+- **`XCOM_RS_BEARER_TOKEN`** (required): Your bearer token. Can be in `Bearer <token>` format or raw token.
+- **`XCOM_RS_SCOPES`** (optional): Space-separated or comma-separated list of OAuth scopes for diagnostics.
+- **`XCOM_RS_EXPIRES_AT`** (optional): UNIX epoch timestamp for token expiration.
+
+Example:
+
+```bash
+export XCOM_RS_BEARER_TOKEN="your_bearer_token_here"
+export XCOM_RS_SCOPES="tweet.read tweet.write users.read"
+```
 
 Check current auth status:
 
@@ -98,30 +113,7 @@ Check current auth status:
 xcom-rs auth status --output json
 ```
 
-Import credentials (expects a base64-encoded JSON token):
-
-```bash
-XCOM_AUTH_DATA="$(python - <<'PY'
-import base64, json
-
-token = {
-  "accessToken": "YOUR_TOKEN",
-  "tokenType": "bearer",
-  "expiresAt": None,
-  "scopes": ["tweet.read", "tweet.write"],
-}
-
-print(base64.b64encode(json.dumps(token).encode()).decode())
-PY
-)"
-
-xcom-rs auth import "$XCOM_AUTH_DATA" --output json
-```
-
-By default, credentials are stored at `$XDG_DATA_HOME/xcom-rs/auth.json` or
-`~/.local/share/xcom-rs/auth.json`.
-
-Security note: the export/import payload is base64 (not encrypted). Treat it like a secret.
+Security note: Keep your bearer token secure. Never commit it to version control or expose it in logs.
 
 ### Examples
 

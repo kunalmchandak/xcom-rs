@@ -70,13 +70,8 @@ pub fn handle_doctor(
             // If diagnostics collection fails completely, return error with next steps
             let mut next_steps = vec![
                 "Check that configuration directories are accessible".to_string(),
-                "Verify file permissions for auth and budget storage locations".to_string(),
+                "Verify file permissions for budget storage location".to_string(),
             ];
-
-            // Try to provide specific paths even if collection failed
-            if let Ok(auth_path) = AuthStore::default_storage_path() {
-                next_steps.push(format!("Auth storage: {}", auth_path.display()));
-            }
             if let Ok(budget_path) = BudgetTracker::default_storage_path() {
                 next_steps.push(format!("Budget storage: {}", budget_path.display()));
             }
