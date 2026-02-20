@@ -43,6 +43,9 @@ urlencoding = "2.1"
 base64 = "0.22"
 url = "2.5"
 tiny_http = "0.12"
+oauth1-request = "0.6"
+hmac = "0.12"
+sha1 = "0.10"
 
 [dev-dependencies]
 mockito = "1.5"

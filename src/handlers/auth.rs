@@ -1,6 +1,6 @@
 use crate::{
-    auth::{local_server_login, manual_login, AuthStore, OAuth2Client},
-    cli::{AuthCommands, LoginMethod},
+    auth::{local_server_login, manual_login, AuthStore, OAuth1aClient, OAuth2Client},
+    cli::{AuthCommands, AuthMode, LoginMethod},
     output::{print_envelope, OutputFormat},
     protocol::{Envelope, ErrorDetails},
 };
@@ -17,7 +17,12 @@ pub fn handle_auth(
     tracing::info!("Executing auth command");
     match command {
         AuthCommands::Status => handle_status(auth_store, create_meta, output_format),
-        AuthCommands::Login { method, scope } => handle_login(
+        AuthCommands::Login {
+            mode,
+            method,
+            scope,
+        } => handle_login(
+            mode,
             method,
             scope,
             auth_store,
@@ -47,6 +52,7 @@ fn handle_status(
 }
 
 fn handle_login(
+    mode: AuthMode,
     method: LoginMethod,
     scope: String,
     auth_store: &AuthStore,
@@ -54,7 +60,7 @@ fn handle_login(
     output_format: OutputFormat,
     non_interactive: bool,
 ) -> Result<()> {
-    tracing::info!("Executing auth login command");
+    tracing::info!("Executing auth login command with mode: {:?}", mode);
 
     // Check non-interactive mode
     if non_interactive {
@@ -74,6 +80,21 @@ fn handle_login(
         std::process::exit(crate::protocol::ExitCode::AuthenticationError.into());
     }
 
+    match mode {
+        AuthMode::OAuth2 => {
+            handle_oauth2_login(method, scope, auth_store, create_meta, output_format)
+        }
+        AuthMode::OAuth1a => handle_oauth1a_login(method, auth_store, create_meta, output_format),
+    }
+}
+
+fn handle_oauth2_login(
+    method: LoginMethod,
+    scope: String,
+    auth_store: &AuthStore,
+    create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,
+    output_format: OutputFormat,
+) -> Result<()> {
     // Get client credentials from environment
     let client_id = std::env::var("XCOM_RS_CLIENT_ID").unwrap_or_else(|_| {
         eprintln!("Error: XCOM_RS_CLIENT_ID environment variable is required");
@@ -83,55 +104,150 @@ fn handle_login(
     let redirect_uri = std::env::var("XCOM_RS_REDIRECT_URI")
         .unwrap_or_else(|_| "http://localhost:8080/callback".to_string());
 
-    match method {
+    let creds = match method {
         LoginMethod::Manual => {
-            let creds = manual_login(client_id, client_secret, redirect_uri, scope, auth_store)?;
-
-            #[derive(serde::Serialize)]
-            struct LoginSuccess {
-                message: String,
-                auth_mode: String,
-                scopes: Option<Vec<String>>,
-            }
-
-            let response = LoginSuccess {
-                message: "Successfully authenticated".to_string(),
-                auth_mode: creds.auth_mode,
-                scopes: creds.scopes,
-            };
-
-            let envelope = if let Some(meta) = create_meta() {
-                Envelope::success_with_meta("auth.login", response, meta)
-            } else {
-                Envelope::success("auth.login", response)
-            };
-            print_envelope(&envelope, output_format)
+            manual_login(client_id, client_secret, redirect_uri, scope, auth_store)?
         }
         LoginMethod::LocalServer => {
-            let creds =
-                local_server_login(client_id, client_secret, redirect_uri, scope, auth_store)?;
-
-            #[derive(serde::Serialize)]
-            struct LoginSuccess {
-                message: String,
-                auth_mode: String,
-                scopes: Option<Vec<String>>,
-            }
-
-            let response = LoginSuccess {
-                message: "Successfully authenticated".to_string(),
-                auth_mode: creds.auth_mode,
-                scopes: creds.scopes,
-            };
-
-            let envelope = if let Some(meta) = create_meta() {
-                Envelope::success_with_meta("auth.login", response, meta)
-            } else {
-                Envelope::success("auth.login", response)
-            };
-            print_envelope(&envelope, output_format)
+            local_server_login(client_id, client_secret, redirect_uri, scope, auth_store)?
         }
+    };
+
+    #[derive(serde::Serialize)]
+    struct LoginSuccess {
+        message: String,
+        auth_mode: String,
+        scopes: Option<Vec<String>>,
     }
+
+    let response = LoginSuccess {
+        message: "Successfully authenticated".to_string(),
+        auth_mode: creds.auth_mode,
+        scopes: creds.scopes,
+    };
+
+    let envelope = if let Some(meta) = create_meta() {
+        Envelope::success_with_meta("auth.login", response, meta)
+    } else {
+        Envelope::success("auth.login", response)
+    };
+    print_envelope(&envelope, output_format)
+}
+
+fn handle_oauth1a_login(
+    method: LoginMethod,
+    auth_store: &AuthStore,
+    create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,
+    output_format: OutputFormat,
+) -> Result<()> {
+    use crate::auth::OAuth1aCredentials;
+
+    // Get OAuth1.0a credentials from environment
+    let consumer_key = std::env::var("XCOM_RS_OAUTH1A_CONSUMER_KEY").unwrap_or_else(|_| {
+        eprintln!("Error: XCOM_RS_OAUTH1A_CONSUMER_KEY environment variable is required");
+        std::process::exit(1);
+    });
+    let consumer_secret = std::env::var("XCOM_RS_OAUTH1A_CONSUMER_SECRET").unwrap_or_else(|_| {
+        eprintln!("Error: XCOM_RS_OAUTH1A_CONSUMER_SECRET environment variable is required");
+        std::process::exit(1);
+    });
+
+    let client = OAuth1aClient::new(consumer_key.clone(), consumer_secret.clone());
+
+    let redirect_uri = std::env::var("XCOM_RS_REDIRECT_URI")
+        .unwrap_or_else(|_| "http://localhost:8080/callback".to_string());
+
+    // Step 1: Request token
+    let request_token_response = client.request_token(&redirect_uri)?;
+
+    // Step 2: Get authorization URL
+    let auth_url = client.authorization_url(&request_token_response.oauth_token);
+
+    println!("\nPlease visit this URL to authorize the application:\n");
+    println!("{}\n", auth_url);
+
+    // Step 3: Get verifier
+    let oauth_verifier = match method {
+        LoginMethod::Manual => {
+            println!("After authorizing, enter the PIN or verifier code:");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            input.trim().to_string()
+        }
+        LoginMethod::LocalServer => {
+            // Start local server and wait for callback
+            use tiny_http::{Response, Server};
+
+            let server = Server::http("127.0.0.1:8080")
+                .map_err(|e| anyhow::anyhow!("Failed to start local server: {}", e))?;
+
+            println!("Waiting for authorization callback on http://localhost:8080/callback...");
+
+            let request = server.recv()?;
+            let url = request.url();
+
+            // Parse verifier from URL query params
+            let verifier = url
+                .split('?')
+                .nth(1)
+                .and_then(|query| {
+                    query.split('&').find_map(|param| {
+                        let mut parts = param.split('=');
+                        if parts.next()? == "oauth_verifier" {
+                            parts.next().map(|v| v.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .ok_or_else(|| anyhow::anyhow!("No oauth_verifier in callback URL"))?;
+
+            let response =
+                Response::from_string("Authorization successful! You can close this window.");
+            request.respond(response)?;
+
+            verifier
+        }
+    };
+
+    // Step 4: Exchange for access token
+    let access_token_response = client.access_token(
+        &request_token_response.oauth_token,
+        &request_token_response.oauth_token_secret,
+        &oauth_verifier,
+    )?;
+
+    // Save credentials
+    let creds = OAuth1aCredentials {
+        auth_mode: "oauth1a".to_string(),
+        consumer_key,
+        consumer_secret,
+        access_token: access_token_response.oauth_token,
+        access_token_secret: access_token_response.oauth_token_secret,
+        scopes: None,
+    };
+
+    auth_store.save_oauth1a_credentials(&creds)?;
+
+    #[derive(serde::Serialize)]
+    struct LoginSuccess {
+        message: String,
+        auth_mode: String,
+        scopes: Option<Vec<String>>,
+    }
+
+    let response = LoginSuccess {
+        message: "Successfully authenticated with OAuth1.0a".to_string(),
+        auth_mode: "oauth1a".to_string(),
+        scopes: None,
+    };
+
+    let envelope = if let Some(meta) = create_meta() {
+        Envelope::success_with_meta("auth.login", response, meta)
+    } else {
+        Envelope::success("auth.login", response)
+    };
+    print_envelope(&envelope, output_format)
 }
 
 fn handle_logout(
