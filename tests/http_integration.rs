@@ -167,6 +167,38 @@ fn test_media_upload_success() {
 }
 
 #[test]
+fn test_get_user_id_with_application_only_token_returns_auth_required() {
+    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    let mut server = Server::new();
+    let mock = server
+        .mock("GET", "/2/users/me")
+        .match_header("authorization", "Bearer app_only_token")
+        .with_status(403)
+        .with_body(r#"{"title":"Forbidden","detail":"When authenticating requests to the Twitter API v2 endpoints, you must use keys and tokens from a Twitter developer App that is attached to a Project. You can create a project via the developer portal. OAuth 2.0 Application-Only is not allowed for this endpoint.","type":"about:blank","status":403}"#)
+        .create();
+
+    std::env::set_var("XCOM_RS_BEARER_TOKEN", "app_only_token");
+
+    let client = XApiClient::with_base_url(server.url());
+    let result = client.get_user_id();
+
+    mock.assert();
+    assert!(result.is_err());
+
+    let error_msg = result.unwrap_err().to_string();
+    assert!(
+        error_msg.contains("auth_required"),
+        "Expected auth_required error, got: {}",
+        error_msg
+    );
+
+    std::env::remove_var("XCOM_RS_BEARER_TOKEN");
+}
+
+#[test]
 fn test_media_upload_auth_error() {
     let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
         .lock()

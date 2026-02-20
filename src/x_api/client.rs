@@ -117,7 +117,7 @@ impl HttpXApiClient {
                 )
             }),
             Err(ureq::Error::Status(_, response)) => {
-                Err(crate::x_api::classify_response_error(&response))
+                Err(crate::x_api::classify_response_error(response))
             }
             Err(ureq::Error::Transport(e)) => Err(ErrorDetails::new(
                 crate::protocol::ErrorCode::NetworkError,

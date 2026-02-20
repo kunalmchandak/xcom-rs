@@ -49,7 +49,18 @@ fn handle_bookmark_add(
             print_envelope(&envelope, output_format)
         }
         Err(e) => {
-            let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
+            let error = if e.to_string().contains("auth_required") {
+                ErrorDetails::auth_required(
+                    "User access token required. The current bearer token is application-only and cannot access user context endpoints.",
+                    vec![
+                        "Run 'xcom-rs auth login' to authenticate with a user access token".to_string(),
+                        "Or set XCOM_RS_BEARER_TOKEN to a valid user access token".to_string(),
+                        "Check token type with 'xcom-rs auth status --output json'".to_string(),
+                    ],
+                )
+            } else {
+                ErrorDetails::new(ErrorCode::InternalError, e.to_string())
+            };
             let envelope = if let Some(meta) = create_meta() {
                 Envelope::<()>::error_with_meta("error", error, meta)
             } else {
@@ -83,7 +94,18 @@ fn handle_bookmark_remove(
             print_envelope(&envelope, output_format)
         }
         Err(e) => {
-            let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
+            let error = if e.to_string().contains("auth_required") {
+                ErrorDetails::auth_required(
+                    "User access token required. The current bearer token is application-only and cannot access user context endpoints.",
+                    vec![
+                        "Run 'xcom-rs auth login' to authenticate with a user access token".to_string(),
+                        "Or set XCOM_RS_BEARER_TOKEN to a valid user access token".to_string(),
+                        "Check token type with 'xcom-rs auth status --output json'".to_string(),
+                    ],
+                )
+            } else {
+                ErrorDetails::new(ErrorCode::InternalError, e.to_string())
+            };
             let envelope = if let Some(meta) = create_meta() {
                 Envelope::<()>::error_with_meta("error", error, meta)
             } else {
@@ -120,7 +142,18 @@ fn handle_bookmark_list(
             }
         }
         Err(e) => {
-            let error = ErrorDetails::new(ErrorCode::InternalError, e.to_string());
+            let error = if e.to_string().contains("auth_required") {
+                ErrorDetails::auth_required(
+                    "User access token required. The current bearer token is application-only and cannot access user context endpoints.",
+                    vec![
+                        "Run 'xcom-rs auth login' to authenticate with a user access token".to_string(),
+                        "Or set XCOM_RS_BEARER_TOKEN to a valid user access token".to_string(),
+                        "Check token type with 'xcom-rs auth status --output json'".to_string(),
+                    ],
+                )
+            } else {
+                ErrorDetails::new(ErrorCode::InternalError, e.to_string())
+            };
             let envelope = if let Some(meta) = create_meta() {
                 Envelope::<()>::error_with_meta("error", error, meta)
             } else {

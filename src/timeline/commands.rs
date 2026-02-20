@@ -208,7 +208,14 @@ impl HttpTimelineClient {
                         e.to_string(),
                     ))
                 })?,
-            Err(ureq::Error::Status(code, _)) if code == 401 || code == 403 => {
+            Err(ureq::Error::Status(code, resp)) if code == 401 || code == 403 => {
+                // Classify 403 errors to detect UAT requirement
+                if code == 403 {
+                    let error_details = crate::x_api::classify_response_error(resp);
+                    if error_details.code == crate::protocol::ErrorCode::AuthRequired {
+                        return Err(TimelineError::AuthRequired);
+                    }
+                }
                 return Err(TimelineError::AuthRequired);
             }
             Err(ureq::Error::Status(code, resp)) => {
