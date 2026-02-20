@@ -143,9 +143,13 @@ fn main() {
         Commands::Bookmarks { command } => {
             handlers::bookmarks::handle_bookmarks(command, &create_meta, output_format)
         }
-        Commands::Auth { command } => {
-            handlers::auth::handle_auth(command, &auth_store, &create_meta, output_format)
-        }
+        Commands::Auth { command } => handlers::auth::handle_auth(
+            command,
+            &auth_store,
+            &create_meta,
+            output_format,
+            cli.non_interactive,
+        ),
         Commands::Billing { command } => {
             handlers::billing::handle_billing(command, &ctx, &create_meta, output_format)
         }
