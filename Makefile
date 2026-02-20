@@ -1,6 +1,6 @@
 # Makefile for xcom-rs
 
-.PHONY: build help install release test test-integration clean fmt lint check setup pre-commit-hooks bump-patch bump-minor bump-major index publish publish-tag
+.PHONY: build help install release test test-integration clean fmt lint check setup pre-commit-hooks bump-patch bump-minor bump-major index brew-update publish publish-tag
 
 # Default target - build debug version
 build:
@@ -21,6 +21,7 @@ help:
 	@echo "  make lint              - Run clippy linter"
 	@echo "  make check             - Run fmt, lint, and test"
 	@echo "  make index             - Build Serena symbol index (.serena/cache)"
+	@echo "  make brew-update       - Update Homebrew formula (Formula/xcom_rs.rb)"
 	@echo "  make setup             - Setup development environment"
 	@echo "  make pre-commit-hooks  - Install git pre-commit hooks"
 	@echo "  make bump-patch        - Bump patch version (0.1.0 -> 0.1.1) without publish"
@@ -28,6 +29,10 @@ help:
 	@echo "  make bump-major        - Bump major version (0.1.0 -> 1.0.0) without publish"
 	@echo "  make publish           - Publish current version to crates.io"
 	@echo "  make publish-tag       - Publish specific git tag to crates.io"
+
+# Update Homebrew formula to current Cargo.toml version (or override with VERSION=...)
+brew-update:
+	@./scripts/update_homebrew_formula.sh "$(VERSION)"
 
 # Install binary to ~/.cargo/bin
 install:
@@ -150,7 +155,18 @@ publish:
 	@CURRENT_VERSION=$$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2); \
 	echo "Current version: $$CURRENT_VERSION"; \
 	read -p "Proceed with publish? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1; \
-	cargo publish
+	cargo publish && ./scripts/update_homebrew_formula.sh "$$CURRENT_VERSION"; \
+	if git diff --quiet -- Formula/xcom_rs.rb; then \
+		echo "No Homebrew formula changes to commit."; \
+	else \
+		git add Formula/xcom_rs.rb; \
+		git commit -m "brew: update formula for v$$CURRENT_VERSION"; \
+		if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then \
+			git push; \
+		else \
+			git push -u origin HEAD; \
+		fi; \
+	fi
 	@echo "Published successfully!"
 
 # Publish specific git tag to crates.io
@@ -167,4 +183,16 @@ publish-tag:
 	git checkout $$tag && \
 	cargo publish && \
 	git checkout $$CURRENT_BRANCH && \
+	./scripts/update_homebrew_formula.sh "$${tag#v}" && \
+	if git diff --quiet -- Formula/xcom_rs.rb; then \
+		echo "No Homebrew formula changes to commit."; \
+	else \
+		git add Formula/xcom_rs.rb; \
+		git commit -m "brew: update formula for $$tag"; \
+		if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1; then \
+			git push; \
+		else \
+			git push -u origin HEAD; \
+		fi; \
+	fi && \
 	echo "Published $$tag successfully and returned to $$CURRENT_BRANCH"
