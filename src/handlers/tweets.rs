@@ -18,7 +18,24 @@ pub fn handle_tweets(
 ) -> Result<()> {
     let ledger = IdempotencyLedger::new(None)
         .map_err(|e| anyhow::anyhow!("Failed to initialize idempotency ledger: {}", e))?;
-    let tweet_cmd = TweetCommand::new(ledger);
+
+    let tweet_cmd = match TweetCommand::new(ledger) {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            // Authentication error - return AUTH_REQUIRED
+            let error = ErrorDetails::new(
+                ErrorCode::AuthRequired,
+                format!("Authentication required: {}", e),
+            );
+            let envelope = if let Some(meta) = create_meta() {
+                Envelope::<()>::error_with_meta("error", error, meta)
+            } else {
+                Envelope::<()>::error("error", error)
+            };
+            let _ = print_envelope(&envelope, output_format);
+            std::process::exit(ExitCode::AuthenticationError.into());
+        }
+    };
 
     match command {
         TweetsCommands::Create {

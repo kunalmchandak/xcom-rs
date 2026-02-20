@@ -24,3 +24,8 @@
 - [x] `tweets list/show/conversation` の実行経路が実APIを使うように修正する（証拠: `src/tweets/commands/mod.rs` の `TweetCommand::new` が `HttpTweetApiClient::from_env()` を呼び出すように変更）
 - [x] テスト用モック実装を本番コード経路から分離する（証拠: `src/search/mod.rs`, `src/timeline/mod.rs`, `src/tweets/mod.rs` で `MockClient` を `#[cfg(test)]` 配下に移動）
 - [x] 追跡されているバックアップコードを削除してデッドコードを解消する（証拠: `.bak`, `.bak2`, `.bak3` ファイルを削除）
+
+## Acceptance #2 Failure Follow-up
+
+- [x] `tweets list/show/conversation` の本番実行経路からモックフォールバックを除去する（証拠: `src/tweets/commands/mod.rs` の `TweetCommand::new` が `HttpTweetApiClient::from_env()` 失敗時に `MockTweetApiClient::new()` へ `unwrap_or_else` でフォールバックしているため、`Result` で失敗を返す実装に変更する）
+- [x] 認証未設定時に `tweets list/show/conversation` が `AUTH_REQUIRED` を返すようにハンドラを修正する（証拠: `src/handlers/tweets.rs` の `handle_tweets` は `TweetCommand::new` の失敗を扱えず、`handle_list`/`handle_show`/`handle_conversation` のエラー返却も `InternalError` 固定のため、初期化失敗を `ErrorCode::AuthRequired` と `ExitCode::AuthenticationError` で返す必要がある）

@@ -35,15 +35,10 @@ pub struct TweetCommand {
 
 impl TweetCommand {
     /// Create a new tweet command handler with a real HTTP API client
-    pub fn new(ledger: IdempotencyLedger) -> Self {
+    pub fn new(ledger: IdempotencyLedger) -> Result<Self> {
         let api_client = crate::tweets::client::HttpTweetApiClient::from_env()
-            .map(|client| Box::new(client) as Box<dyn TweetApiClient>)
-            .unwrap_or_else(|_| {
-                // Fallback to mock for tests when auth is not available
-                Box::new(crate::tweets::client::MockTweetApiClient::new())
-                    as Box<dyn TweetApiClient>
-            });
-        Self { ledger, api_client }
+            .map(|client| Box::new(client) as Box<dyn TweetApiClient>)?;
+        Ok(Self { ledger, api_client })
     }
 
     /// Create a new tweet command handler with a custom API client
