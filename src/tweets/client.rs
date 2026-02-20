@@ -1,47 +1,11 @@
 //! X API client interface and mock implementation for tweet operations.
 
-use anyhow::{Context, Result};
-use serde::Deserialize;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 use super::commands::types::{ListArgs, ListResult};
 use super::models::{ConversationEdge, ConversationResult, ReferencedTweet, Tweet};
-
-/// X API v2 response structures
-#[derive(Debug, Deserialize)]
-struct ApiTweetResponse {
-    data: Option<ApiTweetData>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiTweetsResponse {
-    data: Option<Vec<ApiTweetData>>,
-    meta: Option<ApiMetaWithPagination>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiTweetData {
-    id: String,
-    text: Option<String>,
-    author_id: Option<String>,
-    created_at: Option<String>,
-    conversation_id: Option<String>,
-    in_reply_to_user_id: Option<String>,
-    referenced_tweets: Option<Vec<ApiReferencedTweet>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiReferencedTweet {
-    #[serde(rename = "type")]
-    ref_type: String,
-    id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct ApiMetaWithPagination {
-    result_count: Option<usize>,
-    next_token: Option<String>,
-}
+use crate::x_api::XApiClient;
 
 /// Trait representing the X API client interface for tweet operations.
 /// This allows mocking in tests without real API calls.
@@ -61,248 +25,195 @@ pub trait TweetApiClient: Send + Sync {
     fn list_tweets(&self, args: &ListArgs) -> Result<ListResult>;
 }
 
-/// HTTP-based implementation of TweetApiClient using X API
-pub struct HttpTweetApiClient {
-    bearer_token: String,
+/// HTTP implementation of TweetApiClient using XApiClient for real API calls.
+pub struct HttpTweetApiClient<T: XApiClient> {
+    client: T,
 }
 
-impl HttpTweetApiClient {
-    /// Create a new HTTP tweet API client with the given bearer token
-    pub fn new(bearer_token: String) -> Self {
-        Self { bearer_token }
-    }
-
-    /// Create from environment variable (XCOM_RS_BEARER_TOKEN)
-    pub fn from_env() -> Result<Self> {
-        let auth_store = crate::auth::storage::AuthStore::new();
-        let status = auth_store.status();
-        if !status.authenticated {
-            anyhow::bail!(
-                "Authentication required. Set XCOM_RS_BEARER_TOKEN environment variable."
-            );
-        }
-        let bearer_token =
-            std::env::var("XCOM_RS_BEARER_TOKEN").context("XCOM_RS_BEARER_TOKEN not set")?;
-        Ok(Self::new(bearer_token))
-    }
-
-    /// Resolve authenticated user ID
-    fn resolve_me(&self) -> Result<String> {
-        // Allow test override
-        if let Ok(user_id) = std::env::var("XCOM_TEST_USER_ID") {
-            return Ok(user_id);
-        }
-
-        // Call X API to get authenticated user
-        let url = "https://api.twitter.com/2/users/me";
-
-        let response = ureq::get(url)
-            .set("Authorization", &format!("Bearer {}", self.bearer_token))
-            .call();
-
-        let api_response: serde_json::Value = match response {
-            Ok(resp) => resp
-                .into_json()
-                .context("Failed to parse user/me response")?,
-            Err(ureq::Error::Status(code, _)) if code == 401 || code == 403 => {
-                anyhow::bail!("Authentication required");
-            }
-            Err(ureq::Error::Status(code, resp)) => {
-                let body = resp.into_string().unwrap_or_default();
-                anyhow::bail!("X API error {}: {}", code, body);
-            }
-            Err(e) => {
-                anyhow::bail!("Failed to get user/me: {}", e);
-            }
-        };
-
-        let user_id = api_response["data"]["id"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("Failed to extract user ID from response"))?
-            .to_string();
-
-        Ok(user_id)
-    }
-
-    /// Convert API tweet data to Tweet model
-    fn api_tweet_to_tweet(api_tweet: ApiTweetData) -> Tweet {
-        let mut tweet = Tweet::new(api_tweet.id);
-        tweet.text = api_tweet.text;
-        tweet.author_id = api_tweet.author_id;
-        tweet.created_at = api_tweet.created_at;
-        tweet.conversation_id = api_tweet.conversation_id;
-        tweet.in_reply_to_user_id = api_tweet.in_reply_to_user_id;
-        tweet.referenced_tweets = api_tweet.referenced_tweets.map(|refs| {
-            refs.into_iter()
-                .map(|r| ReferencedTweet {
-                    ref_type: r.ref_type,
-                    id: r.id,
-                })
-                .collect()
-        });
-        tweet
+impl<T: XApiClient> HttpTweetApiClient<T> {
+    /// Create a new HTTP tweet API client with the given XApiClient
+    pub fn new(client: T) -> Self {
+        Self { client }
     }
 }
 
-impl TweetApiClient for HttpTweetApiClient {
+/// Request body for creating a tweet
+#[derive(Debug, Serialize)]
+struct CreateTweetRequest {
+    text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply: Option<ReplySettings>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReplySettings {
+    in_reply_to_tweet_id: String,
+}
+
+/// Response from creating a tweet
+#[derive(Debug, Deserialize)]
+struct CreateTweetResponse {
+    data: Tweet,
+}
+
+/// Response from getting a single tweet
+#[derive(Debug, Deserialize)]
+struct GetTweetResponse {
+    data: Tweet,
+}
+
+/// Response from searching tweets
+#[derive(Debug, Deserialize)]
+struct SearchTweetsResponse {
+    data: Vec<Tweet>,
+}
+
+/// Response from listing tweets (with pagination)
+#[derive(Debug, Deserialize)]
+struct ListTweetsResponse {
+    data: Option<Vec<Tweet>>,
+    meta: Option<ListTweetsResponseMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListTweetsResponseMeta {
+    #[allow(dead_code)]
+    result_count: Option<usize>,
+    next_token: Option<String>,
+}
+
+/// Response from /2/users/me
+#[derive(Debug, Deserialize)]
+struct UsersMeResponse {
+    data: UsersMeData,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsersMeData {
+    id: String,
+}
+
+impl<T: XApiClient + Send + Sync> TweetApiClient for HttpTweetApiClient<T> {
     fn post_tweet(&self, text: &str, reply_to: Option<&str>) -> Result<Tweet> {
-        let url = "https://api.twitter.com/2/tweets";
-        let mut body = serde_json::json!({
-            "text": text,
-        });
-
-        if let Some(reply_id) = reply_to {
-            body["reply"] = serde_json::json!({
-                "in_reply_to_tweet_id": reply_id,
-            });
-        }
-
-        let response = ureq::post(url)
-            .set("Authorization", &format!("Bearer {}", self.bearer_token))
-            .set("Content-Type", "application/json")
-            .send_json(&body);
-
-        let api_response: ApiTweetResponse = match response {
-            Ok(resp) => resp.into_json().context("Failed to parse tweet response")?,
-            Err(ureq::Error::Status(code, resp)) => {
-                let body = resp.into_string().unwrap_or_default();
-                anyhow::bail!("X API error {}: {}", code, body);
-            }
-            Err(e) => anyhow::bail!("Failed to post tweet: {}", e),
+        let request = CreateTweetRequest {
+            text: text.to_string(),
+            reply: reply_to.map(|id| ReplySettings {
+                in_reply_to_tweet_id: id.to_string(),
+            }),
         };
 
-        let api_tweet = api_response
-            .data
-            .ok_or_else(|| anyhow::anyhow!("No data in tweet response"))?;
-
-        Ok(Self::api_tweet_to_tweet(api_tweet))
+        let response: Result<CreateTweetResponse, _> = self.client.post("/2/tweets", &request);
+        match response {
+            Ok(resp) => Ok(resp.data),
+            Err(error_details) => Err(anyhow::anyhow!(
+                "{:?}: {}",
+                error_details.code,
+                error_details.message
+            )),
+        }
     }
 
     fn get_tweet(&self, tweet_id: &str) -> Result<Tweet> {
-        let url = format!(
-            "https://api.twitter.com/2/tweets/{}?tweet.fields=id,text,author_id,created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
+        let path = format!(
+            "/2/tweets/{}?tweet.fields=id,text,author_id,created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
             tweet_id
         );
-
-        let response = ureq::get(&url)
-            .set("Authorization", &format!("Bearer {}", self.bearer_token))
-            .call();
-
-        let api_response: ApiTweetResponse = match response {
-            Ok(resp) => resp.into_json().context("Failed to parse tweet response")?,
-            Err(ureq::Error::Status(404, _)) => {
-                anyhow::bail!("Tweet not found: {}", tweet_id);
-            }
-            Err(ureq::Error::Status(code, resp)) => {
-                let body = resp.into_string().unwrap_or_default();
-                anyhow::bail!("X API error {}: {}", code, body);
-            }
-            Err(e) => anyhow::bail!("Failed to get tweet: {}", e),
-        };
-
-        let api_tweet = api_response
-            .data
-            .ok_or_else(|| anyhow::anyhow!("No data in tweet response"))?;
-
-        Ok(Self::api_tweet_to_tweet(api_tweet))
+        let response: Result<GetTweetResponse, _> = self.client.get(&path);
+        match response {
+            Ok(resp) => Ok(resp.data),
+            Err(error_details) => Err(anyhow::anyhow!(
+                "{:?}: {}",
+                error_details.code,
+                error_details.message
+            )),
+        }
     }
 
     fn search_recent(&self, query: &str, limit: usize) -> Result<Vec<Tweet>> {
-        let url = format!(
-            "https://api.twitter.com/2/tweets/search/recent?query={}&max_results={}&tweet.fields=id,text,author_id,created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
+        let path = format!(
+            "/2/tweets/search/recent?query={}&max_results={}&tweet.fields=id,text,author_id,created_at,conversation_id,in_reply_to_user_id,referenced_tweets",
             urlencoding::encode(query),
             limit
         );
-
-        let response = ureq::get(&url)
-            .set("Authorization", &format!("Bearer {}", self.bearer_token))
-            .call();
-
-        let api_response: ApiTweetsResponse = match response {
-            Ok(resp) => resp
-                .into_json()
-                .context("Failed to parse search response")?,
-            Err(ureq::Error::Status(code, resp)) => {
-                let body = resp.into_string().unwrap_or_default();
-                anyhow::bail!("X API error {}: {}", code, body);
-            }
-            Err(e) => anyhow::bail!("Failed to search tweets: {}", e),
-        };
-
-        let tweets = api_response
-            .data
-            .unwrap_or_default()
-            .into_iter()
-            .map(Self::api_tweet_to_tweet)
-            .collect();
-
-        Ok(tweets)
+        let response: Result<SearchTweetsResponse, _> = self.client.get(&path);
+        match response {
+            Ok(resp) => Ok(resp.data),
+            Err(error_details) => Err(anyhow::anyhow!(
+                "{:?}: {}",
+                error_details.code,
+                error_details.message
+            )),
+        }
     }
 
     fn list_tweets(&self, args: &ListArgs) -> Result<ListResult> {
         use super::commands::types::{ListResultMeta, PaginationMeta};
 
-        let user_id = self.resolve_me()?;
+        // Resolve authenticated user ID
+        let user_id = if let Ok(test_id) = std::env::var("XCOM_TEST_USER_ID") {
+            test_id
+        } else {
+            let me_response: Result<UsersMeResponse, _> = self.client.get("/2/users/me");
+            match me_response {
+                Ok(resp) => resp.data.id,
+                Err(error_details) => {
+                    return Err(anyhow::anyhow!(
+                        "{:?}: {}",
+                        error_details.code,
+                        error_details.message
+                    ));
+                }
+            }
+        };
 
         // Build field list from requested fields
         let field_strings: Vec<String> =
             args.fields.iter().map(|f| f.as_str().to_string()).collect();
         let fields_param = field_strings.join(",");
 
-        let mut url = format!(
-            "https://api.twitter.com/2/users/{}/tweets?max_results={}",
+        let mut path = format!(
+            "/2/users/{}/tweets?max_results={}&tweet.fields={}",
             user_id,
-            args.limit.unwrap_or(10)
-        );
-        url.push_str(&format!(
-            "&tweet.fields={}",
+            args.limit.unwrap_or(10),
             urlencoding::encode(&fields_param)
-        ));
+        );
 
         if let Some(cursor) = &args.cursor {
-            url.push_str(&format!(
+            path.push_str(&format!(
                 "&pagination_token={}",
                 urlencoding::encode(cursor)
             ));
         }
 
-        let response = ureq::get(&url)
-            .set("Authorization", &format!("Bearer {}", self.bearer_token))
-            .call();
+        let response: Result<ListTweetsResponse, _> = self.client.get(&path);
+        match response {
+            Ok(resp) => {
+                let tweets: Vec<Tweet> = resp.data.unwrap_or_default();
 
-        let api_response: ApiTweetsResponse = match response {
-            Ok(resp) => resp.into_json().context("Failed to parse list response")?,
-            Err(ureq::Error::Status(code, resp)) => {
-                let body = resp.into_string().unwrap_or_default();
-                anyhow::bail!("X API error {}: {}", code, body);
+                // Apply field projection
+                let projected_tweets = tweets
+                    .into_iter()
+                    .map(|t| t.project(&args.fields))
+                    .collect();
+
+                let meta = resp.meta.map(|api_meta| ListResultMeta {
+                    pagination: PaginationMeta {
+                        next_cursor: api_meta.next_token,
+                        prev_cursor: None,
+                    },
+                });
+
+                Ok(ListResult {
+                    tweets: projected_tweets,
+                    meta,
+                })
             }
-            Err(e) => anyhow::bail!("Failed to list tweets: {}", e),
-        };
-
-        let tweets: Vec<Tweet> = api_response
-            .data
-            .unwrap_or_default()
-            .into_iter()
-            .map(Self::api_tweet_to_tweet)
-            .collect();
-
-        // Apply field projection
-        let projected_tweets = tweets
-            .into_iter()
-            .map(|t| t.project(&args.fields))
-            .collect();
-
-        let meta = api_response.meta.map(|api_meta| ListResultMeta {
-            pagination: PaginationMeta {
-                next_cursor: api_meta.next_token,
-                prev_cursor: None,
-            },
-        });
-
-        Ok(ListResult {
-            tweets: projected_tweets,
-            meta,
-        })
+            Err(error_details) => Err(anyhow::anyhow!(
+                "{:?}: {}",
+                error_details.code,
+                error_details.message
+            )),
+        }
     }
 }
 

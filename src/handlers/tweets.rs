@@ -3,10 +3,12 @@ use crate::{
     output::{print_envelope, print_ndjson, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
     tweets::{
+        client::{HttpTweetApiClient, TweetApiClient},
         ClassifiedError, ConversationArgs, CreateArgs, EngagementArgs, IdempotencyConflictError,
         IdempotencyLedger, IfExistsPolicy, ListArgs, ReplyArgs, ShowArgs, ThreadArgs,
         ThreadPartialFailureError, TweetCommand, TweetFields,
     },
+    x_api::{HttpXApiClient, XApiConfig},
 };
 use anyhow::Result;
 use std::{collections::HashMap, str::FromStr};
@@ -19,23 +21,19 @@ pub fn handle_tweets(
     let ledger = IdempotencyLedger::new(None)
         .map_err(|e| anyhow::anyhow!("Failed to initialize idempotency ledger: {}", e))?;
 
-    let tweet_cmd = match TweetCommand::new(ledger) {
-        Ok(cmd) => cmd,
-        Err(e) => {
-            // Authentication error - return AUTH_REQUIRED
-            let error = ErrorDetails::new(
-                ErrorCode::AuthRequired,
-                format!("Authentication required: {}", e),
-            );
-            let envelope = if let Some(meta) = create_meta() {
-                Envelope::<()>::error_with_meta("error", error, meta)
-            } else {
-                Envelope::<()>::error("error", error)
-            };
-            let _ = print_envelope(&envelope, output_format);
-            std::process::exit(ExitCode::AuthenticationError.into());
-        }
-    };
+    // Require XCOM_RS_BEARER_TOKEN to be set - fail fast if not configured
+    let config = XApiConfig::from_env().map_err(|e| {
+        anyhow::anyhow!(
+            "X API authentication not configured: {}. Please set XCOM_RS_BEARER_TOKEN environment variable.",
+            e
+        )
+    })?;
+
+    tracing::info!("Using HTTP API client with bearer token");
+    let api_client: Box<dyn TweetApiClient> =
+        Box::new(HttpTweetApiClient::new(HttpXApiClient::new(config)));
+
+    let tweet_cmd = TweetCommand::with_client(ledger, api_client);
 
     match command {
         TweetsCommands::Create {

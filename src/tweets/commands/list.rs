@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::tweets::client::{HttpTweetApiClient, TweetApiClient};
+use crate::tweets::client::TweetApiClient;
 
 use super::types::{ListArgs, ListResult};
 
@@ -11,22 +11,11 @@ pub fn list_with_client(client: &dyn TweetApiClient, args: ListArgs) -> Result<L
     client.list_tweets(&args)
 }
 
-/// List tweets with field projection and pagination.
-pub fn list(args: ListArgs) -> Result<ListResult> {
-    let client = HttpTweetApiClient::from_env()?;
-    list_with_client(&client, args)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tweets::client::MockTweetApiClient;
     use crate::tweets::models::TweetFields;
-
-    fn set_authenticated() {
-        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
-        std::env::set_var("XCOM_TEST_USER_ID", "test_user_id");
-    }
 
     fn unset_authenticated() {
         std::env::remove_var("XCOM_RS_BEARER_TOKEN");

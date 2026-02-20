@@ -64,7 +64,7 @@ fn test_auth_status_authenticated_with_env() {
         "scopes should be present and be an array"
     );
     let scopes = json["data"]["scopes"].as_array().unwrap();
-    assert!(scopes.len() > 0, "scopes should not be empty");
+    assert!(!scopes.is_empty(), "scopes should not be empty");
 }
 
 #[test]
@@ -257,6 +257,64 @@ fn test_dry_run_zero_cost() {
         json["meta"]["cost"]["usdEstimated"], 0.0,
         "meta.cost.usdEstimated should be 0.0 in dry-run mode"
     );
+}
+
+#[test]
+fn test_billing_report_returns_today_usage() {
+    // Verify billing report returns actual today_usage from BudgetTracker
+    let test_dir = std::env::temp_dir().join(format!("xcom-rs-report-test-{}", std::process::id()));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test directory");
+
+    // Step 1: Run an estimate to record usage
+    let output1 = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "billing",
+            "estimate",
+            "tweets.create",
+            "--text",
+            "hello",
+            "--budget-daily-credits",
+            "100",
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute billing estimate");
+
+    let json1 = assert_success_json(&output1);
+    let used_credits = json1["data"]["cost"]["credits"]
+        .as_u64()
+        .expect("credits should be a number");
+
+    // Step 2: Run billing report to verify it returns the used credits
+    let output2 = Command::new("cargo")
+        .env("HOME", &test_dir)
+        .args([
+            "run",
+            "--",
+            "billing",
+            "report",
+            "--budget-daily-credits",
+            "100",
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("Failed to execute billing report");
+
+    let json2 = assert_success_json(&output2);
+    assert_eq!(json2["ok"], true, "ok should be true");
+    assert_eq!(
+        json2["data"]["todayUsage"].as_u64().unwrap(),
+        used_credits,
+        "todayUsage should match the used credits from estimate"
+    );
+
+    // Cleanup
+    std::fs::remove_dir_all(&test_dir).ok();
 }
 
 #[test]
