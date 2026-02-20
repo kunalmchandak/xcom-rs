@@ -32,7 +32,7 @@ pub fn handle_billing(
             create_meta,
             output_format,
         ),
-        BillingCommands::Report => handle_report(create_meta, output_format),
+        BillingCommands::Report => handle_report(budget_tracker, create_meta, output_format),
     }
 }
 
@@ -108,6 +108,7 @@ fn handle_estimate(
 }
 
 fn handle_report(
+    budget_tracker: BudgetTracker,
     create_meta: &dyn Fn() -> Option<HashMap<String, serde_json::Value>>,
     output_format: OutputFormat,
 ) -> Result<()> {
@@ -118,7 +119,9 @@ fn handle_report(
         today_usage: u32,
     }
 
-    let report = BillingReport { today_usage: 0 };
+    let report = BillingReport {
+        today_usage: budget_tracker.today_usage(),
+    };
     let envelope = if let Some(meta) = create_meta() {
         Envelope::success_with_meta("billing.report", report, meta)
     } else {
