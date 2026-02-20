@@ -11,7 +11,8 @@
   - 検証: ユニットテストで `code_challenge` が SHA256 + base64url(no padding) になる
 - [x] 2.2 authorize URL 生成ロジックを実装する（state/redirect_uri/scope含む）
   - 検証: ユニットテストでURLパラメータが期待通りに構成される
-
+- [x] 2.3 `auth login` の `local-server` 方式を実装する（`/callback` 受信で code/state を取得）
+  - 検証: ローカルHTTP要求を使ったテストで `code` と `state` が正しく解釈される
 - [x] 2.4 `auth login` の `manual` 方式を実装する（リダイレクトURL貼り付け解析）
   - 検証: URL解析のユニットテストで `code` と `state` を取得できる
 - [x] 2.5 `token` エンドポイントへの交換処理を実装する（public/confidential 両対応）
@@ -42,8 +43,7 @@
 - [x] 5.2 `--non-interactive` で `auth login` が `auth_required` を返す
   - 検証: 非対話モードのテストで `error.code=auth_required` が返る
 
-## Future Work
+## Acceptance #1 Failure Follow-up
 
-- `auth login` の `local-server` 方式を実装する（`/callback` 受信で code/state を取得）
-  - Reason: Requires HTTP server implementation (e.g., tiny-http or similar). Manual method is sufficient for MVP.
-  - 検証: ローカルHTTP要求を使ったテストで `code` と `state` が正しく解釈される
+- [x] `src/handlers/auth.rs` の `handle_login` で `LoginMethod::LocalServer` が未実装（`anyhow::bail!("local-server method not yet implemented...")`）のため、OAuth2ローカルコールバック方式を実装して実行経路に統合する
+- [x] `src/handlers/auth.rs` の非対話分岐が `ErrorDetails::new(ErrorCode::AuthRequired, ...)` を返しており `nextSteps` が欠落しているため、`error.details.nextSteps` を含む構造化エラー（例: `ErrorDetails::auth_required(...)`）を返すよう修正する

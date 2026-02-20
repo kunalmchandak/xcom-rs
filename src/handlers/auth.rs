@@ -1,8 +1,8 @@
 use crate::{
-    auth::{manual_login, AuthStore, OAuth2Client},
+    auth::{local_server_login, manual_login, AuthStore, OAuth2Client},
     cli::{AuthCommands, LoginMethod},
     output::{print_envelope, OutputFormat},
-    protocol::{Envelope, ErrorCode, ErrorDetails},
+    protocol::{Envelope, ErrorDetails},
 };
 use anyhow::Result;
 use std::collections::HashMap;
@@ -58,9 +58,12 @@ fn handle_login(
 
     // Check non-interactive mode
     if non_interactive {
-        let error = ErrorDetails::new(
-            ErrorCode::AuthRequired,
-            "Cannot perform interactive login in non-interactive mode".to_string(),
+        let error = ErrorDetails::auth_required(
+            "Cannot perform interactive login in non-interactive mode",
+            vec![
+                "Run 'xcom-rs auth login' in an interactive terminal".to_string(),
+                "Or set XCOM_RS_BEARER_TOKEN environment variable".to_string(),
+            ],
         );
         let envelope = if let Some(meta) = create_meta() {
             Envelope::error_with_meta("auth.login", error, meta)
@@ -105,8 +108,28 @@ fn handle_login(
             print_envelope(&envelope, output_format)
         }
         LoginMethod::LocalServer => {
-            // TODO: Implement local-server method
-            anyhow::bail!("local-server method not yet implemented. Use --method manual instead.");
+            let creds =
+                local_server_login(client_id, client_secret, redirect_uri, scope, auth_store)?;
+
+            #[derive(serde::Serialize)]
+            struct LoginSuccess {
+                message: String,
+                auth_mode: String,
+                scopes: Option<Vec<String>>,
+            }
+
+            let response = LoginSuccess {
+                message: "Successfully authenticated".to_string(),
+                auth_mode: creds.auth_mode,
+                scopes: creds.scopes,
+            };
+
+            let envelope = if let Some(meta) = create_meta() {
+                Envelope::success_with_meta("auth.login", response, meta)
+            } else {
+                Envelope::success("auth.login", response)
+            };
+            print_envelope(&envelope, output_format)
         }
     }
 }
