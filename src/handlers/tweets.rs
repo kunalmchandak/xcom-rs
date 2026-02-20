@@ -3,7 +3,7 @@ use crate::{
     output::{print_envelope, print_ndjson, OutputFormat},
     protocol::{Envelope, ErrorCode, ErrorDetails, ExitCode},
     tweets::{
-        client::{HttpTweetApiClient, MockTweetApiClient, TweetApiClient},
+        client::{HttpTweetApiClient, TweetApiClient},
         ClassifiedError, ConversationArgs, CreateArgs, EngagementArgs, IdempotencyConflictError,
         IdempotencyLedger, IfExistsPolicy, ListArgs, ReplyArgs, ShowArgs, ThreadArgs,
         ThreadPartialFailureError, TweetCommand, TweetFields,
@@ -21,19 +21,17 @@ pub fn handle_tweets(
     let ledger = IdempotencyLedger::new(None)
         .map_err(|e| anyhow::anyhow!("Failed to initialize idempotency ledger: {}", e))?;
 
-    // Try to create HTTP client if XCOM_RS_BEARER_TOKEN is set
-    let api_client: Box<dyn TweetApiClient> = match XApiConfig::from_env() {
-        Ok(config) => {
-            tracing::info!("Using HTTP API client with bearer token");
-            Box::new(HttpTweetApiClient::new(HttpXApiClient::new(config)))
-        }
-        Err(_) => {
-            tracing::warn!(
-                "XCOM_RS_BEARER_TOKEN not set, using mock API client (stub implementation)"
-            );
-            Box::new(MockTweetApiClient::new())
-        }
-    };
+    // Require XCOM_RS_BEARER_TOKEN to be set - fail fast if not configured
+    let config = XApiConfig::from_env().map_err(|e| {
+        anyhow::anyhow!(
+            "X API authentication not configured: {}. Please set XCOM_RS_BEARER_TOKEN environment variable.",
+            e
+        )
+    })?;
+
+    tracing::info!("Using HTTP API client with bearer token");
+    let api_client: Box<dyn TweetApiClient> =
+        Box::new(HttpTweetApiClient::new(HttpXApiClient::new(config)));
 
     let tweet_cmd = TweetCommand::with_client(ledger, api_client);
 

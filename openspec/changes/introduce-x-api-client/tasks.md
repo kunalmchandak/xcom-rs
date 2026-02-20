@@ -17,3 +17,7 @@
 
 - [x] `HttpXApiClient` が実行フローに統合されておらずデッドコードになっているため、CLIの実経路で `XApiConfig`/`HttpXApiClient` を生成して利用する（証拠: `src/main.rs` に `x_api` 参照がなく、`HttpXApiClient` の利用が `src/x_api/client.rs` 内に限定されている）。
 - [x] 実行時デフォルトがモック実装のままのため、少なくとも本変更対象のX API呼び出し経路で `MockTweetApiClient` ではなく実HTTPクライアントを配線する（証拠: `TweetCommand::new` が `MockTweetApiClient::new()` を使用している `src/tweets/commands/mod.rs:38`）。
+
+## Acceptance #2 Failure Follow-up
+
+- [x] 実行時に `XCOM_RS_BEARER_TOKEN` が未設定だと `handle_tweets()` が `MockTweetApiClient` にフォールバックしており、本番経路でスタブ実装を利用してしまう（`src/handlers/tweets.rs:25`-`src/handlers/tweets.rs:35`）。モックへのフォールバックを廃止し、設定不足は fail-fast で明示エラーにして、モックは `#[cfg(test)]` / `tests/` 専用に限定する。
