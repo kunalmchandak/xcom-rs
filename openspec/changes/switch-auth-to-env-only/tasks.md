@@ -22,3 +22,9 @@
 ## 5. 回帰確認
 
 - [x] 5.1 主要テストが通ることを確認する（確認: `cargo test --verbose`）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `timeline home`/`timeline mentions` が env-only 認証に未対応。`src/timeline/commands.rs` の `resolve_me` が `XCOM_AUTHENTICATED` を参照しており、`XCOM_RS_BEARER_TOKEN` を設定しても `auth_required` になるため、`AuthStore` または `XCOM_RS_BEARER_TOKEN` 参照へ切り替える。
+- [x] `cargo test --verbose` が Doc-tests で失敗しているため修正する。現状 `src/logging.rs:2` で `tracing_subscriber`、`src/tweets/ledger.rs:2` で `rusqlite` が `can't find crate` となりテストゲートを通過できない（`tool-output/tool_c7947b816001Yh59I1fOSSEh5O:440-455`）。
+- [x] auth import/export 廃止後も import 計画用の未使用型が残っているため削除する。`src/auth/models.rs` の `ImportAction`/`ImportPlan`/`AuthToken` と `src/auth/mod.rs` の再エクスポートを見直し、env-only フローで使われない死蔵コードを解消する。

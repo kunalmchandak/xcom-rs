@@ -97,8 +97,10 @@ impl TimelineCommand {
         }
 
         // In production this would call the X API; here we simulate a default authenticated user
-        // Returning AuthRequired when no credentials are present (simulated by env var absence)
-        if std::env::var("XCOM_AUTHENTICATED").is_err() {
+        // Returning AuthRequired when no credentials are present
+        // Check for XCOM_RS_BEARER_TOKEN using AuthStore
+        let auth_store = crate::auth::storage::AuthStore::new();
+        if !auth_store.is_authenticated() {
             return Err(TimelineError::AuthRequired);
         }
 
@@ -257,13 +259,13 @@ mod tests {
     use crate::timeline::models::TimelineKind;
 
     fn set_authenticated() {
-        std::env::set_var("XCOM_AUTHENTICATED", "1");
+        std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
         std::env::set_var("XCOM_TEST_USER_ID", "test_user_id");
         std::env::set_var("XCOM_TEST_USER_HANDLE", "testhandle");
     }
 
     fn unset_authenticated() {
-        std::env::remove_var("XCOM_AUTHENTICATED");
+        std::env::remove_var("XCOM_RS_BEARER_TOKEN");
         std::env::remove_var("XCOM_TEST_USER_ID");
         std::env::remove_var("XCOM_TEST_USER_HANDLE");
         std::env::remove_var("XCOM_SIMULATE_ERROR");
@@ -272,7 +274,9 @@ mod tests {
 
     #[test]
     fn test_home_timeline_basic() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
         let cmd = TimelineCommand::new();
@@ -291,7 +295,9 @@ mod tests {
 
     #[test]
     fn test_mentions_timeline_basic() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
         let cmd = TimelineCommand::new();
@@ -310,7 +316,9 @@ mod tests {
 
     #[test]
     fn test_user_timeline_basic() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
         let cmd = TimelineCommand::new();
@@ -331,7 +339,9 @@ mod tests {
 
     #[test]
     fn test_home_timeline_with_cursor() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
         let cmd = TimelineCommand::new();
@@ -351,7 +361,9 @@ mod tests {
 
     #[test]
     fn test_timeline_pagination_next_token() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
         let cmd = TimelineCommand::new();
@@ -375,7 +387,9 @@ mod tests {
 
     #[test]
     fn test_timeline_auth_required() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
         let cmd = TimelineCommand::new();
@@ -395,7 +409,9 @@ mod tests {
 
     #[test]
     fn test_timeline_rate_limit_error() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
         std::env::set_var("XCOM_SIMULATE_ERROR", "rate_limit");
         std::env::set_var("XCOM_RETRY_AFTER_MS", "5000");
@@ -422,7 +438,9 @@ mod tests {
 
     #[test]
     fn test_timeline_pagination_with_previous_token() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
         let cmd = TimelineCommand::new();
@@ -448,7 +466,9 @@ mod tests {
 
     #[test]
     fn test_user_timeline_resolves_handle_to_id() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
 
         let cmd = TimelineCommand::new();
@@ -476,7 +496,9 @@ mod tests {
 
     #[test]
     fn test_user_timeline_resolves_handle_with_env_override() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         unset_authenticated();
         // Override the resolved user ID for a specific handle
         std::env::set_var(
@@ -502,7 +524,9 @@ mod tests {
 
     #[test]
     fn test_pagination_response_uses_snake_case_tokens() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_authenticated();
 
         let cmd = TimelineCommand::new();

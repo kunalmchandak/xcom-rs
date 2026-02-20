@@ -96,7 +96,9 @@ mod tests {
     /// Characterization test: list with field projection returns only requested fields
     #[test]
     fn test_list_with_field_projection() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
         std::env::remove_var("XCOM_RETRY_AFTER_MS");
 
@@ -119,7 +121,9 @@ mod tests {
     /// Characterization test: list returns pagination metadata with next_cursor
     #[test]
     fn test_list_pagination() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
         std::env::remove_var("XCOM_RETRY_AFTER_MS");
 
@@ -141,7 +145,9 @@ mod tests {
     /// Characterization test: pagination with cursor returns offset tweets
     #[test]
     fn test_list_pagination_with_cursor() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_SIMULATE_ERROR");
         std::env::remove_var("XCOM_RETRY_AFTER_MS");
 

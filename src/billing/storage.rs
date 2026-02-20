@@ -389,7 +389,9 @@ mod tests {
     #[test]
     fn test_default_storage_path_with_xdg_data_home() {
         // Use a shared global mutex to prevent parallel test execution from interfering
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
         // Save current value
         let original = std::env::var("XDG_DATA_HOME").ok();
@@ -414,7 +416,9 @@ mod tests {
     #[test]
     fn test_default_storage_path_without_xdg() {
         // Use a shared global mutex to prevent parallel test execution from interfering
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
 
         // Save current value
         let original = std::env::var("XDG_DATA_HOME").ok();

@@ -42,5 +42,8 @@ tempfile = "3.10"
 [dev-dependencies]
 mockito = "1.5"
 
+[lib]
+doctest = false
+
 [features]
 env-tests = []

@@ -444,7 +444,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_unauthenticated_no_probe() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_RS_BEARER_TOKEN");
 
         let auth_store = AuthStore::new();
@@ -474,7 +476,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_authenticated_full_scopes_no_probe() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
         let scopes: Vec<String> = REQUIRED_SCOPES.iter().map(|&s| s.to_string()).collect();
         std::env::set_var("XCOM_RS_SCOPES", scopes.join(" "));
@@ -497,7 +501,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_authenticated_missing_scopes() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::set_var("XCOM_RS_BEARER_TOKEN", "test_token");
         std::env::set_var("XCOM_RS_SCOPES", "tweet.read");
 
@@ -518,7 +524,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_with_probe_success() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_RS_BEARER_TOKEN");
 
         let auth_store = AuthStore::new();
@@ -536,7 +544,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_with_probe_failure() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_RS_BEARER_TOKEN");
 
         let auth_store = AuthStore::new();
@@ -557,7 +567,9 @@ mod tests {
 
     #[test]
     fn test_collect_diagnostics_skipped_probe_returns_skipped_status() {
-        let _guard = crate::test_utils::env_lock::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("XCOM_RS_BEARER_TOKEN");
 
         // Passing None means probe is skipped; api_probe is always present with status=skipped
