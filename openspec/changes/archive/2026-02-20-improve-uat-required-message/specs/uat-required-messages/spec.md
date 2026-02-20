@@ -1,6 +1,6 @@
 # uat-required-messages Specification (Delta)
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: ユーザーコンテキスト必須操作の認証エラー案内
 `xcom-rs` はユーザーコンテキスト必須の API 呼び出しがアプリ専用トークンで拒否された場合、`auth_required` と `nextSteps` を返して次のアクションを提示しなければならない（MUST）。

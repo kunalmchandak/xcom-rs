@@ -39,16 +39,51 @@ pub fn parse_retry_after(response: &ureq::Response) -> Option<u64> {
     None
 }
 
+/// Check if response body indicates user access token is required
+///
+/// Detects patterns in the response body that indicate an app-only token
+/// was used where a user context token is required:
+/// - "application-only"
+/// - "app-only"
+/// - "OAuth 2.0 Application-Only"
+/// - "user context"
+/// - "user authentication required"
+///
+/// Takes ownership of response to read the body.
+fn is_uat_required(response: ureq::Response) -> bool {
+    use std::io::Read;
+
+    // Read up to 4KB of response body to check for UAT patterns
+    let mut reader = response.into_reader();
+    let mut buffer = vec![0; 4096];
+
+    if let Ok(n) = reader.read(&mut buffer) {
+        buffer.truncate(n);
+        if let Ok(body) = String::from_utf8(buffer) {
+            let body_lower = body.to_lowercase();
+            return body_lower.contains("application-only")
+                || body_lower.contains("app-only")
+                || body_lower.contains("oauth 2.0 application-only")
+                || body_lower.contains("user context")
+                || body_lower.contains("user authentication required");
+        }
+    }
+
+    false
+}
+
 /// Classify HTTP response into ErrorDetails
 ///
 /// Maps status codes to appropriate ErrorCode:
 /// - 401: AuthenticationFailed
-/// - 403: AuthorizationFailed
+/// - 403: AuthorizationFailed or AuthRequired (if UAT is needed)
 /// - 404: NotFound
 /// - 429: RateLimitExceeded (with retry_after_ms if available)
 /// - 5xx: ServiceUnavailable
 /// - Other: NetworkError (fallback)
-pub fn classify_response_error(response: &ureq::Response) -> ErrorDetails {
+///
+/// Takes ownership of the response to read the body for classification.
+pub fn classify_response_error(response: ureq::Response) -> ErrorDetails {
     let status = response.status();
     let status_text = response.status_text().to_string();
 
@@ -57,17 +92,31 @@ pub fn classify_response_error(response: &ureq::Response) -> ErrorDetails {
             ErrorCode::AuthenticationFailed,
             format!("Authentication failed: {}", status_text),
         ),
-        403 => ErrorDetails::new(
-            ErrorCode::AuthorizationFailed,
-            format!("Authorization failed: {}", status_text),
-        ),
+        403 => {
+            // Check if this is a UAT requirement issue by inspecting the response body
+            if is_uat_required(response) {
+                ErrorDetails::auth_required(
+                    "User access token required. The current bearer token is application-only and cannot access user context endpoints.",
+                    vec![
+                        "Run 'xcom-rs auth login' to authenticate with a user access token".to_string(),
+                        "Or set XCOM_RS_BEARER_TOKEN to a valid user access token".to_string(),
+                        "Check token type with 'xcom-rs auth status --output json'".to_string(),
+                    ],
+                )
+            } else {
+                ErrorDetails::new(
+                    ErrorCode::AuthorizationFailed,
+                    format!("Authorization failed: {}", status_text),
+                )
+            }
+        }
         404 => ErrorDetails::new(
             ErrorCode::NotFound,
             format!("Resource not found: {}", status_text),
         ),
         429 => {
             let message = format!("Rate limit exceeded: {}", status_text);
-            if let Some(retry_after_ms) = parse_retry_after(response) {
+            if let Some(retry_after_ms) = parse_retry_after(&response) {
                 ErrorDetails::with_retry_after(
                     ErrorCode::RateLimitExceeded,
                     message,
@@ -99,7 +148,7 @@ mod tests {
         let _m = mock_server.mock("GET", "/test").with_status(401).create();
 
         let response = ureq::get(&url).call().unwrap_err();
-        if let ureq::Error::Status(_, ref resp) = response {
+        if let ureq::Error::Status(_, resp) = response {
             let error = classify_response_error(resp);
             assert_eq!(error.code, ErrorCode::AuthenticationFailed);
             assert!(!error.is_retryable);
@@ -115,7 +164,7 @@ mod tests {
         let _m = mock_server.mock("GET", "/test").with_status(403).create();
 
         let response = ureq::get(&url).call().unwrap_err();
-        if let ureq::Error::Status(_, ref resp) = response {
+        if let ureq::Error::Status(_, resp) = response {
             let error = classify_response_error(resp);
             assert_eq!(error.code, ErrorCode::AuthorizationFailed);
             assert!(!error.is_retryable);
@@ -131,7 +180,7 @@ mod tests {
         let _m = mock_server.mock("GET", "/test").with_status(404).create();
 
         let response = ureq::get(&url).call().unwrap_err();
-        if let ureq::Error::Status(_, ref resp) = response {
+        if let ureq::Error::Status(_, resp) = response {
             let error = classify_response_error(resp);
             assert_eq!(error.code, ErrorCode::NotFound);
             assert!(!error.is_retryable);
@@ -151,11 +200,13 @@ mod tests {
             .create();
 
         let response = ureq::get(&url).call().unwrap_err();
-        if let ureq::Error::Status(_, ref resp) = response {
+        if let ureq::Error::Status(_, resp) = response {
+            // Parse retry-after before consuming response
+            let retry_ms = parse_retry_after(&resp);
             let error = classify_response_error(resp);
             assert_eq!(error.code, ErrorCode::RateLimitExceeded);
             assert!(error.is_retryable);
-            assert_eq!(error.retry_after_ms, Some(5000));
+            assert_eq!(retry_ms, Some(5000));
         } else {
             panic!("Expected status error");
         }
@@ -177,14 +228,16 @@ mod tests {
             .create();
 
         let response = ureq::get(&url).call().unwrap_err();
-        if let ureq::Error::Status(_, ref resp) = response {
+        if let ureq::Error::Status(_, resp) = response {
+            // Parse retry-after before consuming response
+            let retry_ms = parse_retry_after(&resp);
             let error = classify_response_error(resp);
             assert_eq!(error.code, ErrorCode::RateLimitExceeded);
             assert!(error.is_retryable);
-            assert!(error.retry_after_ms.is_some());
-            let retry_ms = error.retry_after_ms.unwrap();
+            assert!(retry_ms.is_some());
+            let retry = retry_ms.unwrap();
             // Should be approximately 10000ms (10 seconds)
-            assert!((9000..=11000).contains(&retry_ms));
+            assert!((9000..=11000).contains(&retry));
         } else {
             panic!("Expected status error");
         }
@@ -197,7 +250,7 @@ mod tests {
         let _m = mock_server.mock("GET", "/test").with_status(429).create();
 
         let response = ureq::get(&url).call().unwrap_err();
-        if let ureq::Error::Status(_, ref resp) = response {
+        if let ureq::Error::Status(_, resp) = response {
             let error = classify_response_error(resp);
             assert_eq!(error.code, ErrorCode::RateLimitExceeded);
             assert!(error.is_retryable);
@@ -214,7 +267,7 @@ mod tests {
         let _m = mock_server.mock("GET", "/test").with_status(503).create();
 
         let response = ureq::get(&url).call().unwrap_err();
-        if let ureq::Error::Status(_, ref resp) = response {
+        if let ureq::Error::Status(_, resp) = response {
             let error = classify_response_error(resp);
             assert_eq!(error.code, ErrorCode::ServiceUnavailable);
             assert!(error.is_retryable);
@@ -252,6 +305,76 @@ mod tests {
         if let ureq::Error::Status(_, ref resp) = response {
             let retry_ms = parse_retry_after(resp);
             assert!(retry_ms.is_none());
+        } else {
+            panic!("Expected status error");
+        }
+    }
+
+    #[test]
+    fn test_classify_403_with_uat_required_application_only() {
+        let mut mock_server = mockito::Server::new();
+        let url = format!("{}/test", mock_server.url());
+        let _m = mock_server
+            .mock("GET", "/test")
+            .with_status(403)
+            .with_body(r#"{"title":"Forbidden","detail":"When authenticating requests to the Twitter API v2 endpoints, you must use keys and tokens from a Twitter developer App that is attached to a Project. You can create a project via the developer portal. OAuth 2.0 Application-Only is not allowed for this endpoint.","type":"about:blank","status":403}"#)
+            .create();
+
+        let response = ureq::get(&url).call().unwrap_err();
+        if let ureq::Error::Status(_, resp) = response {
+            let error = classify_response_error(resp);
+            assert_eq!(error.code, ErrorCode::AuthRequired);
+            assert!(!error.is_retryable);
+            assert!(error.details.is_some());
+            let details = error.details.unwrap();
+            assert!(details.contains_key("nextSteps"));
+            let next_steps = details.get("nextSteps").unwrap();
+            assert!(next_steps.is_array());
+            assert!(next_steps.as_array().unwrap().len() >= 2);
+        } else {
+            panic!("Expected status error");
+        }
+    }
+
+    #[test]
+    fn test_classify_403_with_uat_required_user_context() {
+        let mut mock_server = mockito::Server::new();
+        let url = format!("{}/test", mock_server.url());
+        let _m = mock_server
+            .mock("GET", "/test")
+            .with_status(403)
+            .with_body(
+                r#"{"errors":[{"message":"This endpoint requires user context authentication"}]}"#,
+            )
+            .create();
+
+        let response = ureq::get(&url).call().unwrap_err();
+        if let ureq::Error::Status(_, resp) = response {
+            let error = classify_response_error(resp);
+            assert_eq!(error.code, ErrorCode::AuthRequired);
+            assert!(!error.is_retryable);
+        } else {
+            panic!("Expected status error");
+        }
+    }
+
+    #[test]
+    fn test_classify_403_without_uat_pattern() {
+        let mut mock_server = mockito::Server::new();
+        let url = format!("{}/test", mock_server.url());
+        let _m = mock_server
+            .mock("GET", "/test")
+            .with_status(403)
+            .with_body(
+                r#"{"errors":[{"message":"You do not have permission to access this resource"}]}"#,
+            )
+            .create();
+
+        let response = ureq::get(&url).call().unwrap_err();
+        if let ureq::Error::Status(_, resp) = response {
+            let error = classify_response_error(resp);
+            assert_eq!(error.code, ErrorCode::AuthorizationFailed);
+            assert!(!error.is_retryable);
         } else {
             panic!("Expected status error");
         }

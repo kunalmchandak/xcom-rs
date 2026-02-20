@@ -119,6 +119,21 @@ impl XApiClient {
                 Ok(user_response.data.id)
             }
             Err(ureq::Error::Status(code, resp)) => {
+                // For 403 errors on /2/users/me, classify to detect UAT requirement
+                if code == 403 {
+                    let error_details = crate::x_api::classify_response_error(resp);
+                    if error_details.code == crate::protocol::ErrorCode::AuthRequired {
+                        // Return a special error that can be detected by handlers
+                        return Err(anyhow::anyhow!("auth_required"));
+                    }
+                    // If not auth_required, the response was consumed by classification
+                    // Return a generic 403 error
+                    return Err(ClassifiedError::from_status_code(
+                        code,
+                        "Authorization failed".to_string(),
+                    )
+                    .into());
+                }
                 let error_body = resp
                     .into_string()
                     .unwrap_or_else(|_| "Unknown error".to_string());

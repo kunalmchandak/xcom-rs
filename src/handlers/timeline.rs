@@ -99,8 +99,12 @@ pub fn handle_timeline(
 fn build_error_details(e: &TimelineError) -> ErrorDetails {
     match e {
         TimelineError::AuthRequired => ErrorDetails::auth_required(
-            e.to_string(),
-            vec!["Set XCOM_RS_BEARER_TOKEN and re-run the command".to_string()],
+            "User access token required. The current bearer token is application-only and cannot access user context endpoints.",
+            vec![
+                "Run 'xcom-rs auth login' to authenticate with a user access token".to_string(),
+                "Or set XCOM_RS_BEARER_TOKEN to a valid user access token".to_string(),
+                "Check token type with 'xcom-rs auth status --output json'".to_string(),
+            ],
         ),
         TimelineError::ApiError(classified) => {
             if let Some(retry_after_ms) = classified.retry_after_ms {
