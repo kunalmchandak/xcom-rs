@@ -260,19 +260,52 @@ fn handle_logout(
 
     // Revoke token if requested
     if revoke {
-        if let Ok(Some(creds)) = auth_store.load_oauth2_credentials() {
-            let client_id = std::env::var("XCOM_RS_CLIENT_ID").unwrap_or_else(|_| {
-                eprintln!("Warning: XCOM_RS_CLIENT_ID not set, skipping revocation");
-                String::new()
-            });
+        // Try to load credentials (OAuth2 or OAuth1.0a)
+        if let Ok(Some(creds)) = auth_store.load_credentials() {
+            match creds {
+                crate::auth::models::AuthCredentials::OAuth2(oauth2_creds) => {
+                    let client_id = std::env::var("XCOM_RS_CLIENT_ID").unwrap_or_else(|_| {
+                        eprintln!("Warning: XCOM_RS_CLIENT_ID not set, skipping revocation");
+                        String::new()
+                    });
 
-            if !client_id.is_empty() {
-                let client_secret = std::env::var("XCOM_RS_CLIENT_SECRET").ok();
-                let client = OAuth2Client::new(client_id, client_secret);
+                    if !client_id.is_empty() {
+                        let client_secret = std::env::var("XCOM_RS_CLIENT_SECRET").ok();
+                        let client = OAuth2Client::new(client_id, client_secret);
 
-                tracing::info!("Revoking access token");
-                if let Err(e) = client.revoke_token(&creds.access_token) {
-                    eprintln!("Warning: Failed to revoke token: {}", e);
+                        tracing::info!("Revoking OAuth2 access token");
+                        if let Err(e) = client.revoke_token(&oauth2_creds.access_token) {
+                            eprintln!("Warning: Failed to revoke OAuth2 token: {}", e);
+                        }
+                    }
+                }
+                crate::auth::models::AuthCredentials::OAuth1a(oauth1a_creds) => {
+                    let consumer_key = std::env::var("XCOM_RS_OAUTH1A_CONSUMER_KEY")
+                        .unwrap_or_else(|_| {
+                            eprintln!(
+                                "Warning: XCOM_RS_OAUTH1A_CONSUMER_KEY not set, skipping revocation"
+                            );
+                            String::new()
+                        });
+                    let consumer_secret =
+                        std::env::var("XCOM_RS_OAUTH1A_CONSUMER_SECRET").unwrap_or_else(|_| {
+                            eprintln!(
+                                "Warning: XCOM_RS_OAUTH1A_CONSUMER_SECRET not set, skipping revocation"
+                            );
+                            String::new()
+                        });
+
+                    if !consumer_key.is_empty() && !consumer_secret.is_empty() {
+                        let client = OAuth1aClient::new(consumer_key, consumer_secret);
+
+                        tracing::info!("Revoking OAuth1.0a access token");
+                        if let Err(e) = client.invalidate_token(
+                            &oauth1a_creds.access_token,
+                            &oauth1a_creds.access_token_secret,
+                        ) {
+                            eprintln!("Warning: Failed to revoke OAuth1.0a token: {}", e);
+                        }
+                    }
                 }
             }
         }

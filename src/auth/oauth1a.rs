@@ -296,6 +296,26 @@ impl OAuth1aClient {
                 .context("Missing oauth_token_secret in response")?,
         })
     }
+
+    /// Invalidate OAuth1.0a access token
+    pub fn invalidate_token(&self, oauth_token: &str, oauth_token_secret: &str) -> Result<()> {
+        let url = format!("{}/oauth/invalidate_token", self.base_url);
+
+        // Build OAuth1.0a authorization header
+        let auth_header = self.build_oauth_header(
+            &url,
+            "POST",
+            &std::collections::HashMap::new(),
+            Some((oauth_token, oauth_token_secret)),
+        )?;
+
+        ureq::post(&url)
+            .set("Authorization", &auth_header)
+            .call()
+            .context("Failed to invalidate OAuth1.0a token")?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -411,5 +431,27 @@ mod tests {
         assert!(header.contains("oauth_timestamp="));
         assert!(header.contains("oauth_nonce="));
         assert!(header.contains("oauth_version=\"1.0\""));
+    }
+
+    #[test]
+    fn test_invalidate_token_with_mockito() {
+        use mockito;
+
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("POST", "/oauth/invalidate_token")
+            .with_status(200)
+            .create();
+
+        let client = OAuth1aClient::with_base_url(
+            "consumer_key".to_string(),
+            "consumer_secret".to_string(),
+            server.url(),
+        );
+
+        let result = client.invalidate_token("access_token", "access_secret");
+        assert!(result.is_ok());
+
+        mock.assert();
     }
 }

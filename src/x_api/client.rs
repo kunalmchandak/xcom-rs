@@ -3,7 +3,7 @@
 //! Provides a unified HTTP client for X API requests with base URL,
 //! authentication, and common header handling.
 
-use crate::auth::AuthStore;
+use crate::auth::{AuthStore, OAuth1aClient};
 use crate::protocol::ErrorDetails;
 use anyhow::Result;
 use serde::de::DeserializeOwned;
@@ -80,6 +80,14 @@ impl XApiConfig {
             "No bearer token available. Set XCOM_RS_BEARER_TOKEN or run 'xcom-rs auth login'"
         )
     }
+
+    /// Resolve OAuth1.0a credentials from auth_store
+    fn resolve_oauth1a_credentials(&self) -> Result<Option<crate::auth::OAuth1aCredentials>> {
+        if let Some(ref auth_store) = self.auth_store {
+            return auth_store.resolve_oauth1a_credentials();
+        }
+        Ok(None)
+    }
 }
 
 /// X API client trait
@@ -119,6 +127,35 @@ impl HttpXApiClient {
 
     /// Create base request with common headers
     fn create_request(&self, method: &str, url: &str) -> Result<ureq::Request, ErrorDetails> {
+        // Try OAuth1.0a first (priority 1)
+        if let Ok(Some(oauth1a_creds)) = self.config.resolve_oauth1a_credentials() {
+            let client = OAuth1aClient::new(
+                oauth1a_creds.consumer_key.clone(),
+                oauth1a_creds.consumer_secret.clone(),
+            );
+
+            let auth_header = client
+                .generate_auth_header(
+                    url,
+                    method,
+                    &oauth1a_creds.access_token,
+                    &oauth1a_creds.access_token_secret,
+                    None, // No query params for now
+                )
+                .map_err(|e| {
+                    ErrorDetails::new(
+                        crate::protocol::ErrorCode::AuthRequired,
+                        format!("Failed to generate OAuth1.0a signature: {}", e),
+                    )
+                })?;
+
+            return Ok(ureq::request(method, url)
+                .set("Authorization", &auth_header)
+                .set("User-Agent", &self.config.user_agent)
+                .set("Accept", "application/json"));
+        }
+
+        // Fall back to Bearer token (priority 2)
         let bearer_token = self.config.resolve_bearer_token().map_err(|e| {
             ErrorDetails::new(
                 crate::protocol::ErrorCode::AuthRequired,
@@ -340,5 +377,82 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert_eq!(error.code, crate::protocol::ErrorCode::NetworkError);
+    }
+
+    #[test]
+    fn test_oauth1a_auth_header_generation() {
+        let _guard = crate::test_utils::env_lock::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Serialize, Deserialize)]
+        struct TestResponse {
+            message: String,
+        }
+
+        // Save original OAuth1.0a environment variables
+        let original_consumer_key = std::env::var("XCOM_RS_OAUTH1A_CONSUMER_KEY").ok();
+        let original_consumer_secret = std::env::var("XCOM_RS_OAUTH1A_CONSUMER_SECRET").ok();
+        let original_access_token = std::env::var("XCOM_RS_OAUTH1A_ACCESS_TOKEN").ok();
+        let original_access_token_secret =
+            std::env::var("XCOM_RS_OAUTH1A_ACCESS_TOKEN_SECRET").ok();
+
+        // Set OAuth1.0a credentials via environment
+        std::env::set_var("XCOM_RS_OAUTH1A_CONSUMER_KEY", "test_consumer_key");
+        std::env::set_var("XCOM_RS_OAUTH1A_CONSUMER_SECRET", "test_consumer_secret");
+        std::env::set_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN", "test_access_token");
+        std::env::set_var(
+            "XCOM_RS_OAUTH1A_ACCESS_TOKEN_SECRET",
+            "test_access_token_secret",
+        );
+
+        // Create config with auth_store
+        let mut mock_server = mockito::Server::new();
+        let auth_store = AuthStore::new();
+        let config = XApiConfig {
+            base_url: mock_server.url(),
+            bearer_token: None,
+            user_agent: "test".to_string(),
+            auth_store: Some(auth_store),
+        };
+
+        let client = HttpXApiClient::new(config);
+
+        // Create a mock that expects OAuth1.0a authorization header
+        let _m = mock_server
+            .mock("GET", "/test")
+            .match_header(
+                "authorization",
+                mockito::Matcher::Regex(r"^OAuth .*oauth_signature=.*".to_string()),
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"message":"success"}"#)
+            .create();
+
+        let result: Result<TestResponse, ErrorDetails> = client.get("/test");
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert_eq!(response.message, "success");
+
+        // Restore original environment
+        match original_consumer_key {
+            Some(val) => std::env::set_var("XCOM_RS_OAUTH1A_CONSUMER_KEY", val),
+            None => std::env::remove_var("XCOM_RS_OAUTH1A_CONSUMER_KEY"),
+        }
+        match original_consumer_secret {
+            Some(val) => std::env::set_var("XCOM_RS_OAUTH1A_CONSUMER_SECRET", val),
+            None => std::env::remove_var("XCOM_RS_OAUTH1A_CONSUMER_SECRET"),
+        }
+        match original_access_token {
+            Some(val) => std::env::set_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN", val),
+            None => std::env::remove_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN"),
+        }
+        match original_access_token_secret {
+            Some(val) => std::env::set_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN_SECRET", val),
+            None => std::env::remove_var("XCOM_RS_OAUTH1A_ACCESS_TOKEN_SECRET"),
+        }
     }
 }

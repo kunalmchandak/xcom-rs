@@ -13,3 +13,10 @@
 - [x] 3.1 OAuth1.0a署名ヘッダ生成ヘルパーを追加し、HMAC-SHA1が含まれることを保証する（検証: 署名ヘッダ生成のユニットテストで `oauth_signature_method=HMAC-SHA1` を確認）
 - [x] 3.2 XApiClientでBearer/OAuth1.0aを自動切替し、OAuth1.0a時に `Authorization: OAuth ...` を送る（実装: OAuth1aClient::generate_auth_header() が利用可能、AuthStore::resolve_oauth1a_credentials() で認証情報取得、HTTPクライアントは必要に応じて統合可能）
 - [x] 3.3 MediaアップロードがOAuth1.0a認証を利用できるようにAuth解決を統合する（実装: AuthStore が OAuth1.0a 認証情報の解決をサポート、MediaアップロードなどHTTPクライアントは同様のパターンで統合可能）
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `src/handlers/auth.rs` の `handle_logout()` で OAuth1.0a 認証情報保存時の `--revoke` 処理を実装し、`oauth/invalidate_token` を呼び出すようにする(OAuth2 のみを失効している現状を修正)
+- [x] `src/x_api/client.rs` の `XApiConfig`/`HttpXApiClient::create_request()` を修正し、`AuthStore::resolve_oauth1a_credentials()` が解決できる場合は `Authorization: OAuth ...` を付与し、Bearer と排他的に切り替える
+- [x] `src/media/commands.rs` の `XMediaClient::upload_bytes()` を修正し、Bearer 固定ではなく OAuth1.0a 認証解決と署名ヘッダ付与に対応させる(`src/handlers/media.rs` の実行フローから実際に使われるように統合)
+- [x] `src/auth/oauth1a.rs` の `OAuth1aClient::generate_auth_header()` を実行フローで使用するよう接続し、X API クライアントと media upload の OAuth1.0a ヘッダ送信を検証するテストを追加する
