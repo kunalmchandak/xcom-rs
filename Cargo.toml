@@ -40,6 +40,9 @@ dirs = "5.0"
 tempfile = "3.10"
 ureq = { version = "2.10", features = ["json"] }
 urlencoding = "2.1"
+base64 = "0.22"
+url = "2.5"
+tiny_http = "0.12"
 
 [dev-dependencies]
 mockito = "1.5"

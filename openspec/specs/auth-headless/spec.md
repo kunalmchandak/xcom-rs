@@ -14,12 +14,14 @@ TBD - created by archiving change plan-headless-auth-and-billing. Update Purpose
 - **And** エラーメッセージではなく判定可能な状態情報として返る
 
 ### Requirement: 認証情報の環境変数による設定
-`xcom-rs` は環境変数 `XCOM_RS_BEARER_TOKEN` から認証情報を読み取り、対話なしで認証状態を確立できなければならない（MUST）。
+`xcom-rs` は環境変数 `XCOM_RS_BEARER_TOKEN` を優先しつつ、保存済みの OAuth2 認証情報からも認証状態を確立できなければならない（MUST）。
 
-#### Scenario: 環境変数による認証
-- **Given** `XCOM_RS_BEARER_TOKEN` に有効なトークンが設定されている
+#### Scenario: 保存済みトークンによる認証
+- **Given** `XCOM_RS_BEARER_TOKEN` が設定されていない
+- **And** `auth.json` に有効なアクセストークンが保存されている
 - **When** `auth status --output json` を実行する
 - **Then** `authenticated=true` を返す
+- **And** `authMode=oauth2` を返す
 
 ### Requirement: 非対話モードでの安全失敗
 `--non-interactive` 指定時、認証が不足している操作はプロンプトを出さずに構造化エラーで失敗しなければならない（MUST）。
