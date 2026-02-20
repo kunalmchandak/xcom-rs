@@ -12,7 +12,3 @@ pub use commands::{
 };
 pub use ledger::IdempotencyLedger;
 pub use models::{ConversationResult, Tweet, TweetFields, TweetMeta};
-
-// Mock client is only available in tests
-#[cfg(test)]
-pub use client::MockTweetApiClient;
