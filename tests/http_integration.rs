@@ -1,12 +1,14 @@
 //! Integration tests for HTTP API calls using mockito
 
+mod common;
+
 use mockito::Server;
 use xcom_rs::media::commands::MediaClient;
 use xcom_rs::tweets::http_client::XApiClient;
 
 #[test]
 fn test_create_tweet_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -35,7 +37,7 @@ fn test_create_tweet_success() {
 
 #[test]
 fn test_retweet_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -63,7 +65,7 @@ fn test_retweet_success() {
 
 #[test]
 fn test_unretweet_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -88,7 +90,7 @@ fn test_unretweet_success() {
 
 #[test]
 fn test_bookmark_add_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -116,7 +118,7 @@ fn test_bookmark_add_success() {
 
 #[test]
 fn test_bookmark_remove_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -141,7 +143,7 @@ fn test_bookmark_remove_success() {
 
 #[test]
 fn test_media_upload_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -168,7 +170,7 @@ fn test_media_upload_success() {
 
 #[test]
 fn test_get_user_id_with_application_only_token_returns_auth_required() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -200,7 +202,7 @@ fn test_get_user_id_with_application_only_token_returns_auth_required() {
 
 #[test]
 fn test_media_upload_auth_error() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -228,7 +230,7 @@ fn test_media_upload_auth_error() {
 
 #[test]
 fn test_media_upload_service_error() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -256,7 +258,7 @@ fn test_media_upload_service_error() {
 
 #[test]
 fn test_create_tweet_rate_limit() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -284,7 +286,7 @@ fn test_create_tweet_rate_limit() {
 
 #[test]
 fn test_get_user_id_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -310,7 +312,7 @@ fn test_get_user_id_success() {
 
 #[test]
 fn test_like_tweet_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
@@ -338,7 +340,7 @@ fn test_like_tweet_success() {
 
 #[test]
 fn test_unlike_tweet_success() {
-    let _guard = xcom_rs::test_utils::env_lock::ENV_LOCK
+    let _guard = common::test_utils::env_lock::ENV_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 

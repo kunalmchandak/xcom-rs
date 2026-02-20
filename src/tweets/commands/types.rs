@@ -271,7 +271,14 @@ impl ClassifiedError {
                 }
             }
             ErrorKind::Timeout => ErrorCode::NetworkError,
-            ErrorKind::NonRetryable => ErrorCode::InternalError,
+            ErrorKind::NonRetryable => {
+                // Map 401 to AuthRequired, others to InternalError
+                if let Some(401) = self.status_code {
+                    ErrorCode::AuthRequired
+                } else {
+                    ErrorCode::InternalError
+                }
+            }
         }
     }
 }

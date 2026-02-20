@@ -1,7 +1,9 @@
 /// Integration tests for auth and billing functionality
 /// These tests verify the requirements from tasks.md without network dependencies
+mod common;
+
+use common::test_utils::helpers::{assert_error_json, assert_success_json};
 use std::process::Command;
-use xcom_rs::test_utils::helpers::{assert_error_json, assert_success_json};
 
 #[test]
 fn test_auth_status_unauthenticated_fixture() {

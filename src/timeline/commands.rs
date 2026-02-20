@@ -384,10 +384,12 @@ impl<C: TimelineClient> TimelineCommand<C> {
 }
 
 /// Mock implementation of TimelineClient for testing
+#[cfg(test)]
 pub struct MockTimelineClient {
     should_auth_fail: bool,
 }
 
+#[cfg(test)]
 impl MockTimelineClient {
     /// Create a new mock client
     pub fn new() -> Self {
@@ -454,12 +456,14 @@ impl MockTimelineClient {
     }
 }
 
+#[cfg(test)]
 impl Default for MockTimelineClient {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(test)]
 impl TimelineClient for MockTimelineClient {
     fn get(&self, args: &TimelineArgs) -> Result<TimelineResult, TimelineError> {
         if self.should_auth_fail {
