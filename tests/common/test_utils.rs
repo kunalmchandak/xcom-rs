@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 /// Test utilities for coordinating test execution and creating test fixtures
 pub mod search_fixtures {
     use xcom_rs::search::models::{SearchTweet, SearchUser};
